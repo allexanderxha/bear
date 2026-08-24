@@ -85,6 +85,8 @@ mut:
 	symbols   []obj.Symbol
 	relocs    []obj.Reloc
 	locals    map[string]int
+	types     map[string]string // local name -> declared struct type ('' = unknown)
+	structs   map[string][]string // declared struct name -> field list
 	local_cnt int
 	argc      int
 	cur_fn    string
@@ -97,6 +99,12 @@ mut:
 
 fn gen(prog Program) !obj.Obj {
 	mut g := Gen{}
+	for sd in prog.structs {
+		if sd.name in g.structs {
+			return error('duplicate struct declaration "${sd.name}"')
+		}
+		g.structs[sd.name] = sd.fields
+	}
 	for fd in prog.fns {
 		g.gen_fn(fd)!
 	}
@@ -109,13 +117,23 @@ fn gen(prog Program) !obj.Obj {
 }
 
 fn (mut g Gen) gen_fn(fd FnDecl) ! {
-	g.cur_fn = fd.name
-	g.symbols << obj.Symbol{ name: fd.name, entry: g.code.len }
+	// methods compile to functions named `Type.method`; the receiver is the
+	// implicit first argument, so `p.dist(x)` becomes `call Point.dist p, x`
+	sym := if fd.recv_type.len > 0 { '${fd.recv_type}.${fd.name}' } else { fd.name }
+	g.cur_fn = sym
+	g.symbols << obj.Symbol{ name: sym, entry: g.code.len }
 	g.locals.clear()
+	g.types.clear()
 	g.local_cnt = 0
-	g.argc = fd.params.len
+	g.argc = fd.params.len + if fd.recv_type.len > 0 { 1 } else { 0 }
+	mut next := 0
+	if fd.recv_type.len > 0 {
+		g.locals[fd.recv_name] = 0
+		g.types[fd.recv_name] = fd.recv_type
+		next = 1
+	}
 	for i, p in fd.params {
-		g.locals[p] = i
+		g.locals[p] = i + next
 	}
 	g.local_cnt = g.argc
 	// `enter n` reserves the non-parameter locals; n is patched once the body
@@ -157,6 +175,7 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			idx := g.local_cnt
 			g.local_cnt++
 			g.locals[st.target] = idx
+			g.types[st.target] = g.expr_type(st.expr)
 			g.code << op_store
 			g.code << obj.encode_i64(i64(idx))
 		}
@@ -165,6 +184,7 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 				return error('unknown variable "${st.target}" at line ${st.line}')
 			}
 			g.gen_expr(st.expr)!
+			g.types[st.target] = g.expr_type(st.expr)
 			g.code << op_store
 			g.code << obj.encode_i64(i64(idx))
 		}
@@ -272,7 +292,9 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.fixups << Fixup{ name: end_l, off: u32(g.code.len) - 8 }
 			g.loops << LoopCtx{ break_l: end_l, continue_l: inc_l }
 			prev := g.locals[st.target] or { -1 }
+			prev_t := g.types[st.target] or { '' }
 			g.locals[st.target] = var_idx
+			g.types.delete(st.target)
 			for s in st.body {
 				g.gen_stmt(s)!
 			}
@@ -280,6 +302,9 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 				g.locals[st.target] = prev
 			} else {
 				g.locals.delete(st.target)
+			}
+			if prev_t.len > 0 {
+				g.types[st.target] = prev_t
 			}
 			g.loops.delete_last()
 			g.emit_label(inc_l)
@@ -320,7 +345,9 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.code << op_aget
 			g.emit_store(elem_idx)
 			prev := g.locals[st.target] or { -1 }
+			prev_t := g.types[st.target] or { '' }
 			g.locals[st.target] = elem_idx
+			g.types.delete(st.target)
 			for s in st.body {
 				g.gen_stmt(s)!
 			}
@@ -328,6 +355,9 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 				g.locals[st.target] = prev
 			} else {
 				g.locals.delete(st.target)
+			}
+			if prev_t.len > 0 {
+				g.types[st.target] = prev_t
 			}
 			g.loops.delete_last()
 			g.emit_label(inc_l)
@@ -395,6 +425,22 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.code << obj.encode_i64(i64(e.elems.len))
 		}
 		.struct_lit {
+			// typed literals validate their fields against the declaration
+			// (an undeclared type name is allowed — it may live in another
+			// file, where the same validation applies)
+			if e.name.len > 0 && e.name in g.structs {
+				decl_fields := g.structs[e.name]
+				seen := map[string]bool{}
+				for f in e.fields {
+					if f.name !in decl_fields {
+						return error('unknown field "${f.name}" for struct ${e.name} (line ${e.line})')
+					}
+					if f.name in seen {
+						return error('duplicate field "${f.name}" in struct literal (line ${e.line})')
+					}
+					seen[f.name] = true
+				}
+			}
 			// for each field: push the name string then the value; mkstruct n
 			// pops the (name, value) pairs and builds the record
 			for f in e.fields {
@@ -408,6 +454,18 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.gen_expr(*e.left)!
 			g.emit_field_name(e.name)
 			g.code << op_sget
+		}
+		.method_call {
+			// p.dist(x)  →  call <Type>.dist  p, x
+			recv_t := g.method_receiver_type(e)!
+			g.gen_expr(*e.left)!
+			for a in e.args {
+				g.gen_expr(a)!
+			}
+			g.code << op_call
+			g.code << obj.encode_i64(0) // placeholder — patched by the linker
+			g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: '${recv_t}.${e.name}', kind: 0 }
+			g.code << obj.encode_i64(i64(e.args.len + 1)) // receiver + args
 		}
 		.index {
 			g.gen_expr(*e.left)!
@@ -545,6 +603,33 @@ fn (mut g Gen) gen_binary(e Expr) ! {
 			g.code << op
 		}
 	}
+}
+
+// expr_type returns the declared struct type of an expression when it is
+// statically knowable: a typed literal `Point{...}` or a copy of a typed
+// variable. Everything else has no known type ('').
+fn (mut g Gen) expr_type(e Expr) string {
+	if e.kind == .struct_lit {
+		return e.name
+	}
+	if e.kind == .ident {
+		return g.types[e.name] or { '' }
+	}
+	return ''
+}
+
+// method_receiver_type resolves the struct type a method call is made on.
+// The receiver must be a plain variable whose type the compiler knows
+// (from a typed literal, an assignment, or a method receiver binding).
+fn (mut g Gen) method_receiver_type(e Expr) !string {
+	recv := e.left
+	if recv.kind == .ident {
+		t := g.types[recv.name] or { '' }
+		if t.len > 0 {
+			return t
+		}
+	}
+	return error('cannot resolve method "${e.name}": receiver type unknown (line ${e.line})')
 }
 
 // emit_field_name pushes a field name as a string constant. Like string

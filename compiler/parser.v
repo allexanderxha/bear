@@ -1,8 +1,9 @@
 // parser.v — recursive-descent parser for the VuurRaaf language.
 //
 // Grammar (informal):
-//   program  := fn*
-//   fn       := 'fn' IDENT '(' [IDENT (',' IDENT)*] ')' block
+//   program  := (struct | fn)*
+//   struct   := 'struct' IDENT '{' [IDENT (',' IDENT)*] '}'
+//   fn       := 'fn' [ '(' IDENT IDENT ')' ] IDENT '(' [IDENT (',' IDENT)*] ')' block
 //   block    := '{' stmt* '}'
 //   stmt     := 'let' IDENT '=' expr
 //             | IDENT '=' expr
@@ -25,8 +26,10 @@
 //   add      := mul (('*'|'/'|'%') mul)*
 //   mul      := ('not'|'-') mul | primary
 //   primary  := INT | STR | 'true' | 'false' | IDENT ['(' args ')'] | '(' expr ')'
-//             | '{' [IDENT ':' expr (',' IDENT ':' expr)*] '}'   (struct literal)
-//   postfix  := primary ('.' IDENT | '[' expr ']')*               (field access, indexing)
+//             | '{' [IDENT ':' expr (',' IDENT ':' expr)*] '}'   (anonymous struct literal)
+//             | IDENT '{' IDENT ':' expr ... '}'                  (typed struct literal)
+//   postfix  := primary ('.' IDENT ['(' args ')'] | '[' expr ']')*
+//             ('.' IDENT '(' ... ')' is a method call; everything else field access)
 module compiler
 
 pub enum ExprKind {
@@ -38,6 +41,7 @@ pub enum ExprKind {
 	struct_lit
 	index
 	field
+	method_call
 	unary
 	binary
 	call
@@ -107,17 +111,28 @@ pub mut:
 	line      int
 }
 
-pub struct FnDecl {
+// StructDecl is a `struct Name { a, b }` declaration.
+pub struct StructDecl {
 pub mut:
 	name   string
-	params []string
-	body   []Stmt
+	fields []string
 	line   int
+}
+
+pub struct FnDecl {
+pub mut:
+	name      string
+	recv_name string // method receiver local name ('' for plain functions)
+	recv_type string // method receiver struct type ('' for plain functions)
+	params    []string
+	body      []Stmt
+	line      int
 }
 
 pub struct Program {
 pub mut:
-	fns []FnDecl
+	fns     []FnDecl
+	structs []StructDecl
 }
 
 pub fn parse(toks []Tok) !Program {
@@ -168,7 +183,11 @@ fn (mut p Parser) parse_cond() !Expr {
 fn (mut p Parser) parse_program() !Program {
 	mut prog := Program{}
 	for p.cur().kind != .eof {
-		prog.fns << p.parse_fn()!
+		if p.cur().kind == .kw_struct {
+			prog.structs << p.parse_struct_decl()!
+		} else {
+			prog.fns << p.parse_fn()!
+		}
 	}
 	if prog.fns.len == 0 {
 		return error('no functions found in source')
@@ -176,9 +195,46 @@ fn (mut p Parser) parse_program() !Program {
 	return prog
 }
 
+// parse_struct_decl parses `struct Name { a, b, c }`.
+fn (mut p Parser) parse_struct_decl() !StructDecl {
+	t := p.expect(.kw_struct, "'struct'")!
+	name := p.expect(.ident, 'struct name')!
+	p.expect(.lbrace, "'{'")!
+	mut fields := []string{}
+	if p.cur().kind != .rbrace {
+		for {
+			fields << p.expect(.ident, 'field name')!.lit
+			if p.cur().kind == .comma {
+				p.advance()
+				continue
+			}
+			break
+		}
+	}
+	p.expect(.rbrace, "'}'")!
+	return StructDecl{ name: name.lit, fields: fields, line: t.line }
+}
+
+// parse_fn parses `fn name(params) { }` or a method `fn (p Type) name(params) { }`.
 fn (mut p Parser) parse_fn() !FnDecl {
 	fn_tok := p.expect(.kw_fn, "'fn'")!
+	mut recv_name := ''
+	mut recv_type := ''
+	if p.cur().kind == .lparen {
+		// method: fn (p Type) name(...)
+		p.advance()
+		recv_name = p.expect(.ident, 'receiver name')!.lit
+		recv_type = p.expect(.ident, 'receiver type')!.lit
+		p.expect(.rparen, "')'")!
+	}
 	name := p.expect(.ident, 'function name')!
+	params := p.parse_params()!
+	body := p.parse_block()!
+	return FnDecl{ name: name.lit, recv_name: recv_name, recv_type: recv_type, params: params, body: body, line: fn_tok.line }
+}
+
+// parse_params parses `(a, b, c)` — the parameter list of a function.
+fn (mut p Parser) parse_params() ![]string {
 	p.expect(.lparen, "'('")!
 	mut params := []string{}
 	if p.cur().kind != .rparen {
@@ -192,8 +248,7 @@ fn (mut p Parser) parse_fn() !FnDecl {
 		}
 	}
 	p.expect(.rparen, "')'")!
-	body := p.parse_block()!
-	return FnDecl{ name: name.lit, params: params, body: body, line: fn_tok.line }
+	return params
 }
 
 fn (mut p Parser) parse_block() ![]Stmt {
@@ -382,6 +437,12 @@ fn field_node(base Expr, name string, line int) Expr {
 	return Expr{ kind: .field, left: &b, name: name, line: line }
 }
 
+// method_node builds `base.name(args)`.
+fn method_node(recv Expr, name string, args []Expr, line int) Expr {
+	mut r := recv
+	return Expr{ kind: .method_call, left: &r, name: name, args: args, line: line }
+}
+
 fn (mut p Parser) parse_expr() !Expr {
 	return p.parse_or()!
 }
@@ -466,7 +527,9 @@ fn (mut p Parser) parse_postfix() !Expr {
 
 // parse_postfix_tail continues a postfix chain from an already-parsed base.
 // It takes the base by value (Expr only holds pointers to heap-allocated
-// child nodes) and returns the extended chain.
+// child nodes) and returns the extended chain. A `.name(` is a method call
+// (the receiver is the expression the dot was applied to); `.name` without
+// parens is plain field access.
 fn (mut p Parser) parse_postfix_tail(e Expr) !Expr {
 	mut cur := e
 	for {
@@ -480,7 +543,13 @@ fn (mut p Parser) parse_postfix_tail(e Expr) !Expr {
 		if p.cur().kind == .dot {
 			p.advance()
 			name := p.expect(.ident, 'field name')!
-			cur = field_node(cur, name.lit, cur.line)
+			f := field_node(cur, name.lit, cur.line)
+			if p.cur().kind == .lparen {
+				args := p.parse_args()!
+				cur = method_node(*f.left, f.name, args, f.line)
+			} else {
+				cur = f
+			}
 			continue
 		}
 		break
@@ -530,27 +599,19 @@ fn (mut p Parser) parse_primary() !Expr {
 			return Expr{ kind: .array_lit, elems: elems, line: t.line }
 		}
 		.lbrace {
-			// struct literal: { name: expr, ... }
-			p.advance()
-			mut fields := []StructField{}
-			if p.cur().kind != .rbrace {
-				for {
-					name := p.expect(.ident, 'field name')!
-					p.expect(.colon, "':'")!
-					val := p.parse_expr()!
-					fields << StructField{ name: name.lit, val: val }
-					if p.cur().kind == .comma {
-						p.advance()
-						continue
-					}
-					break
-				}
-			}
-			p.expect(.rbrace, "'}'")!
-			return Expr{ kind: .struct_lit, fields: fields, line: t.line }
+			// anonymous struct literal: { name: expr, ... }
+			fields := p.parse_struct_fields()!
+			return Expr{ kind: .struct_lit, name: '', fields: fields, line: t.line }
 		}
 		.ident {
 			p.advance()
+			if p.cur().kind == .lbrace && p.looks_like_struct_lit() {
+				// typed struct literal: Name{ name: expr, ... } — only when the
+				// brace clearly opens a field list (`{ ident :`), so `if x {` and
+				// match arms like `x { ... }` still parse as blocks
+				fields := p.parse_struct_fields()!
+				return Expr{ kind: .struct_lit, name: t.lit, fields: fields, line: t.line }
+			}
 			return p.parse_call_or_ident(t)!
 		}
 		.kw_print, .kw_println {
@@ -571,6 +632,12 @@ fn (mut p Parser) parse_call_or_ident(t Tok) !Expr {
 }
 
 fn (mut p Parser) parse_call(name Tok) !Expr {
+	args := p.parse_args()!
+	return Expr{ kind: .call, name: name.lit, args: args, line: name.line }
+}
+
+// parse_args parses `(e1, e2, ...)` and returns the argument expressions.
+fn (mut p Parser) parse_args() ![]Expr {
 	p.expect(.lparen, "'('")!
 	mut args := []Expr{}
 	if p.cur().kind != .rparen {
@@ -584,5 +651,35 @@ fn (mut p Parser) parse_call(name Tok) !Expr {
 		}
 	}
 	p.expect(.rparen, "')'")!
-	return Expr{ kind: .call, name: name.lit, args: args, line: name.line }
+	return args
+}
+
+// parse_struct_fields parses `{ name: expr, ... }` and returns the fields.
+fn (mut p Parser) parse_struct_fields() ![]StructField {
+	p.expect(.lbrace, "'{'")!
+	mut fields := []StructField{}
+	if p.cur().kind != .rbrace {
+		for {
+			name := p.expect(.ident, 'field name')!
+			p.expect(.colon, "':'")!
+			val := p.parse_expr()!
+			fields << StructField{ name: name.lit, val: val }
+			if p.cur().kind == .comma {
+				p.advance()
+				continue
+			}
+			break
+		}
+	}
+	p.expect(.rbrace, "'}'")!
+	return fields
+}
+
+// looks_like_struct_lit reports whether the current token (`{`) opens a typed
+// struct literal: the tokens after the brace must be `ident :`.
+fn (mut p Parser) looks_like_struct_lit() bool {
+	if p.pos + 2 >= p.toks.len {
+		return false
+	}
+	return p.toks[p.pos + 1].kind == .ident && p.toks[p.pos + 2].kind == .colon
 }

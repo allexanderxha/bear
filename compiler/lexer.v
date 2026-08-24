@@ -30,6 +30,7 @@ pub enum TokKind {
 	dotdot
 	dotdotdot
 	kw_fn
+	kw_struct
 	kw_let
 	kw_if
 	kw_else
@@ -254,6 +255,7 @@ fn (mut l Lexer) lex_ident(line int) Tok {
 	lit := l.src[start..l.pos]
 	kind := match lit {
 		'fn' { TokKind.kw_fn }
+		'struct' { TokKind.kw_struct }
 		'let' { TokKind.kw_let }
 		'if' { TokKind.kw_if }
 		'else' { TokKind.kw_else }
