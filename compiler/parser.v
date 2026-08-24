@@ -7,7 +7,8 @@
 //   stmt     := 'let' IDENT '=' expr
 //             | IDENT '=' expr
 //             | postfix '=' expr            (a[i] = v)
-//             | 'if' cond block ['else' block]
+//             | 'if' cond block ['else' ('if' ... | block)]
+//             | 'match' expr '{' (expr block | 'else' block)* '}'
 //             | 'while' cond block
 //             | 'for' IDENT 'in' range block        (range := expr '..' expr | expr '...' expr)
 //             | 'for' IDENT 'in' expr block          (iterate an array)
@@ -58,6 +59,7 @@ pub enum StmtKind {
 	assign_stmt
 	index_assign
 	if_stmt
+	match_stmt
 	while_stmt
 	for_range_stmt
 	for_in_stmt
@@ -65,6 +67,13 @@ pub enum StmtKind {
 	continue_stmt
 	ret_stmt
 	assert_stmt
+}
+
+// MatchArm is a single `value { body }` arm of a match statement.
+pub struct MatchArm {
+pub mut:
+	val  Expr
+	body []Stmt
 }
 
 pub struct Stmt {
@@ -77,6 +86,9 @@ pub mut:
 	idx       Expr // index_assign: the index expression
 	body      []Stmt
 	els       []Stmt
+	arms      []MatchArm // match_stmt: the arms (val + body)
+	has_else  bool       // match_stmt: a trailing else arm exists
+	els_body  []Stmt     // match_stmt: body of the else arm
 	has_val   bool
 	inclusive bool // for_range_stmt: `..` (false) vs `...` (true)
 	line      int
@@ -194,15 +206,31 @@ fn (mut p Parser) parse_stmt() !Stmt {
 			e := p.parse_expr()!
 			return Stmt{ kind: .let_stmt, target: name.lit, expr: e, line: t.line }
 		}		.kw_if {
+			return p.parse_if(t)!
+		}
+		.kw_match {
 			p.advance()
-			cond := p.parse_cond()!
-			body := p.parse_block()!
-			mut els := []Stmt{}
-			if p.cur().kind == .kw_else {
-				p.advance()
-				els = p.parse_block()!
+			subject := p.parse_expr()!
+			p.expect(.lbrace, "'{'")!
+			mut arms := []MatchArm{}
+			mut has_else := false
+			mut els_body := []Stmt{}
+			for p.cur().kind != .rbrace {
+				if p.cur().kind == .eof {
+					return error('unexpected end of file inside match (missing "}")')
+				}
+				if p.cur().kind == .kw_else {
+					p.advance()
+					els_body = p.parse_block()!
+					has_else = true
+					continue
+				}
+				val := p.parse_expr()!
+				body := p.parse_block()!
+				arms << MatchArm{ val: val, body: body }
 			}
-			return Stmt{ kind: .if_stmt, cond: cond, body: body, els: els, line: t.line }
+			p.expect(.rbrace, "'}'")!
+			return Stmt{ kind: .match_stmt, expr: subject, arms: arms, has_else: has_else, els_body: els_body, line: t.line }
 		}
 		.kw_while {
 			p.advance()
@@ -282,6 +310,25 @@ fn (mut p Parser) parse_stmt() !Stmt {
 			return error('unexpected token "${t.lit}" at line ${t.line}')
 		}
 	}
+}
+
+// parse_if parses `if cond block ['else' ('if' ... | block)]`. An `else if`
+// chain is represented by putting the nested if-statement in the else list,
+// so codegen needs no special casing.
+fn (mut p Parser) parse_if(t Tok) !Stmt {
+	p.advance()
+	cond := p.parse_cond()!
+	body := p.parse_block()!
+	mut els := []Stmt{}
+	if p.cur().kind == .kw_else {
+		p.advance()
+		if p.cur().kind == .kw_if {
+			els << p.parse_if(p.cur())!
+		} else {
+			els = p.parse_block()!
+		}
+	}
+	return Stmt{ kind: .if_stmt, cond: cond, body: body, els: els, line: t.line }
 }
 
 // bin_node allocates a binary-operator node. It takes copies of the operands

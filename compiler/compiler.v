@@ -190,6 +190,40 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			}
 			g.emit_label(end_l)
 		}
+		.match_stmt {
+			// match x { v1 {..} v2 {..} else {..} }  →  subject := x; a chain of
+			// equality tests jumping to the matching arm; else falls through.
+			subj_idx := g.new_local()
+			end_l := g.new_label()
+			g.gen_expr(st.expr)!
+			g.emit_store(subj_idx)
+			for i, arm in st.arms {
+				next_l := g.new_label()
+				g.emit_load(subj_idx)
+				g.gen_expr(arm.val)!
+				g.code << op_eq
+				g.code << op_jz
+				g.code << obj.encode_i64(0)
+				g.fixups << Fixup{ name: next_l, off: u32(g.code.len) - 8 }
+				for s in arm.body {
+					g.gen_stmt(s)!
+				}
+				g.code << op_jmp
+				g.code << obj.encode_i64(0)
+				g.fixups << Fixup{ name: end_l, off: u32(g.code.len) - 8 }
+				g.emit_label(next_l)
+				if i == st.arms.len - 1 && !st.has_else {
+					// no else: fall through to the end label
+					g.emit_label(end_l)
+				}
+			}
+			if st.has_else {
+				for s in st.els_body {
+					g.gen_stmt(s)!
+				}
+				g.emit_label(end_l)
+			}
+		}
 		.while_stmt {
 			loop_l := g.new_label()
 			end_l := g.new_label()

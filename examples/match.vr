@@ -1,0 +1,81 @@
+// match.vr — else-if chains and match statements.
+//   vr run examples/match.vr
+
+// classify returns a label using an else-if chain.
+fn classify(n) {
+	if n < 0 {
+		return "negative"
+	} else if n == 0 {
+		return "zero"
+	} else if n < 10 {
+		return "small"
+	} else {
+		return "big"
+	}
+}
+
+// describe names a number with a match statement.
+fn describe(n) {
+	match n {
+		0 {
+			println("nothing")
+		}
+		1 {
+			println("lonely")
+		}
+		2 {
+			println("a pair")
+		}
+		7 {
+			println("lucky")
+		}
+		else {
+			println("just " + n)
+		}
+	}
+}
+
+fn main() {
+	// else-if chain
+	println(classify(-5))
+	println(classify(0))
+	println(classify(7))
+	println(classify(100))
+
+	// match with else
+	describe(0)
+	describe(1)
+	describe(2)
+	describe(7)
+	describe(42)
+
+	// match on strings
+	let day = "fri"
+	match day {
+		"sat" {
+			println("weekend!")
+		}
+		"sun" {
+			println("weekend!")
+		}
+		else {
+			println("workday")
+		}
+	}
+
+	// match inside a loop (break/continue still work)
+	let found = 0
+	for i in 0..10 {
+		match i {
+			4 {
+				found = i
+				break
+			}
+			else {
+				// keep looking
+			}
+		}
+	}
+	println("found " + found)
+	assert found == 4
+}

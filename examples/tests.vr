@@ -125,6 +125,66 @@ fn test_break_continue() {
 	assert odds[2] == 5
 }
 
+fn test_else_if() {
+	let score = 85
+	let grade = ""
+	if score >= 90 {
+		grade = "A"
+	} else if score >= 80 {
+		grade = "B"
+	} else if score >= 70 {
+		grade = "C"
+	} else {
+		grade = "F"
+	}
+	assert grade == "B"
+	assert 10 > 5
+}
+
+fn test_match() {
+	let total = 0
+	match 2 {
+		1 {
+			total = total + 1
+		}
+		2 {
+			total = total + 10
+		}
+		else {
+			total = total + 100
+		}
+	}
+	assert total == 10 // matched the 2 arm
+
+	// match on strings
+	let word = "cat"
+	let sound = ""
+	match word {
+		"dog" {
+			sound = "woof"
+		}
+		"cat" {
+			sound = "meow"
+		}
+		else {
+			sound = "?"
+		}
+	}
+	assert sound == "meow"
+
+	// no else arm: nothing runs when nothing matches
+	let hit = 0
+	match 99 {
+		1 {
+			hit = 1
+		}
+		2 {
+			hit = 2
+		}
+	}
+	assert hit == 0
+}
+
 fn test_failing() {
 	// this one is meant to fail — shows up in `vr test` output
 	assert 1 == 2

@@ -34,6 +34,7 @@ pub enum TokKind {
 	kw_while
 	kw_for
 	kw_in
+	kw_match
 	kw_break
 	kw_continue
 	kw_return
@@ -253,6 +254,7 @@ fn (mut l Lexer) lex_ident(line int) Tok {
 		'while' { TokKind.kw_while }
 		'for' { TokKind.kw_for }
 		'in' { TokKind.kw_in }
+		'match' { TokKind.kw_match }
 		'break' { TokKind.kw_break }
 		'continue' { TokKind.kw_continue }
 		'return' { TokKind.kw_return }

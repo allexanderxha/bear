@@ -109,6 +109,26 @@ fn main() {
     let i = 100
     for i in 0..3 { ... }        // loop vars are scoped to the loop
     println(i)                   // 100
+
+    if score >= 90 {             // else-if chains
+        grade = "A"
+    } else if score >= 80 {
+        grade = "B"
+    } else {
+        grade = "F"
+    }
+
+    match day {                  // match on any comparable value
+        "sat" {
+            println("weekend")
+        }
+        "sun" {
+            println("weekend")
+        }
+        else {                   // optional fallback arm
+            println("workday")
+        }
+    }
 }
 ```
 
@@ -120,9 +140,12 @@ fn main() {
   `for i in 0...10 { }`; loop variables are scoped to the loop body
 - `break` / `continue` inside `while` and `for` loops (in `for` loops
   `continue` advances the loop variable / iterator first)
+- else-if chains: `if a { } else if b { } else { }`
+- `match`: `match expr { v1 { } v2 { } else { } }` — arms test equality on
+  any comparable value (ints, strings, ...); the `else` arm is optional
 - operators: `+ - * / %`, `== != < <= > >=`, `and or not`, unary `-`
-- statements: `let`, assignment, `if/else`, `while`, `for`, `break`,
-  `continue`, `return`, `assert`, calls, `print(...)` / `println(...)`
+- statements: `let`, assignment, `if/else`, `match`, `while`, `for`,
+  `break`, `continue`, `return`, `assert`, calls, `print(...)` / `println(...)`
 - comments: `//`
 
 ## Assembly
