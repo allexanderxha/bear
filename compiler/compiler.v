@@ -66,6 +66,14 @@ struct Fixup {
 	off  u32
 }
 
+// LoopCtx records where `break` and `continue` should jump while generating
+// the body of a loop. For `for` loops `continue` targets the increment, not
+// the condition check, so the loop variable still advances.
+struct LoopCtx {
+	break_l    string
+	continue_l string
+}
+
 struct Gen {
 mut:
 	code      []u8
@@ -79,6 +87,7 @@ mut:
 	cur_fn    string
 	labels    map[string]int
 	fixups    []Fixup
+	loops     []LoopCtx
 	enter_off u32
 	next_lbl  int
 }
@@ -189,9 +198,11 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.code << op_jz
 			g.code << obj.encode_i64(0)
 			g.fixups << Fixup{ name: end_l, off: u32(g.code.len) - 8 }
+			g.loops << LoopCtx{ break_l: end_l, continue_l: loop_l }
 			for s in st.body {
 				g.gen_stmt(s)!
 			}
+			g.loops.delete_last()
 			g.code << op_jmp
 			g.code << obj.encode_i64(0)
 			g.fixups << Fixup{ name: loop_l, off: u32(g.code.len) - 8 }
@@ -202,6 +213,7 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			var_idx := g.new_local()
 			bound_idx := g.new_local()
 			loop_l := g.new_label()
+			inc_l := g.new_label()
 			end_l := g.new_label()
 			g.gen_expr(st.expr)!
 			g.gen_expr(st.cond)!
@@ -214,6 +226,7 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.code << op_jz
 			g.code << obj.encode_i64(0)
 			g.fixups << Fixup{ name: end_l, off: u32(g.code.len) - 8 }
+			g.loops << LoopCtx{ break_l: end_l, continue_l: inc_l }
 			prev := g.locals[st.target] or { -1 }
 			g.locals[st.target] = var_idx
 			for s in st.body {
@@ -224,6 +237,8 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			} else {
 				g.locals.delete(st.target)
 			}
+			g.loops.delete_last()
+			g.emit_label(inc_l)
 			g.emit_load(var_idx)
 			g.code << op_push_i
 			g.code << obj.encode_i64(1)
@@ -240,6 +255,7 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			idx_idx := g.new_local()
 			elem_idx := g.new_local()
 			loop_l := g.new_label()
+			inc_l := g.new_label()
 			end_l := g.new_label()
 			g.gen_expr(st.expr)!
 			g.emit_store(arr_idx)
@@ -254,6 +270,7 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.code << op_jz
 			g.code << obj.encode_i64(0)
 			g.fixups << Fixup{ name: end_l, off: u32(g.code.len) - 8 }
+			g.loops << LoopCtx{ break_l: end_l, continue_l: inc_l }
 			g.emit_load(arr_idx)
 			g.emit_load(idx_idx)
 			g.code << op_aget
@@ -268,6 +285,8 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			} else {
 				g.locals.delete(st.target)
 			}
+			g.loops.delete_last()
+			g.emit_label(inc_l)
 			g.emit_load(idx_idx)
 			g.code << op_push_i
 			g.code << obj.encode_i64(1)
@@ -289,6 +308,24 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 		.assert_stmt {
 			g.gen_expr(st.expr)!
 			g.code << op_assert
+		}
+		.break_stmt {
+			if g.loops.len == 0 {
+				return error('break outside of a loop (line ${st.line})')
+			}
+			ctx := g.loops[g.loops.len - 1]
+			g.code << op_jmp
+			g.code << obj.encode_i64(0)
+			g.fixups << Fixup{ name: ctx.break_l, off: u32(g.code.len) - 8 }
+		}
+		.continue_stmt {
+			if g.loops.len == 0 {
+				return error('continue outside of a loop (line ${st.line})')
+			}
+			ctx := g.loops[g.loops.len - 1]
+			g.code << op_jmp
+			g.code << obj.encode_i64(0)
+			g.fixups << Fixup{ name: ctx.continue_l, off: u32(g.code.len) - 8 }
 		}
 	}
 }

@@ -78,6 +78,53 @@ fn test_for_in() {
 	assert squares[3] == 9
 }
 
+fn test_break_continue() {
+	// break exits the loop early
+	let total = 0
+	for i in 0..100 {
+		if i == 5 {
+			break
+		}
+		total = total + i
+	}
+	assert total == 10 // 0+1+2+3+4
+
+	// continue skips to the next iteration
+	let sum = 0
+	for i in 0..6 {
+		if i == 3 {
+			continue
+		}
+		sum = sum + i
+	}
+	assert sum == 12 // 0+1+2+4+5 (3 skipped)
+
+	// break and continue in while loops
+	let n = 0
+	while true {
+		n = n + 1
+		if n == 3 {
+			continue
+		}
+		if n == 5 {
+			break
+		}
+	}
+	assert n == 5
+
+	// continue advances the iterator in for-in loops (no infinite loop)
+	let odds = []
+	for x in [1, 2, 3, 4, 5] {
+		if x % 2 == 0 {
+			continue
+		}
+		push(odds, x)
+	}
+	assert odds == odds
+	assert len(odds) == 3
+	assert odds[2] == 5
+}
+
 fn test_failing() {
 	// this one is meant to fail — shows up in `vr test` output
 	assert 1 == 2

@@ -11,6 +11,7 @@
 //             | 'while' cond block
 //             | 'for' IDENT 'in' range block        (range := expr '..' expr | expr '...' expr)
 //             | 'for' IDENT 'in' expr block          (iterate an array)
+//             | 'break' | 'continue'
 //             | 'return' [expr]
 //             | 'assert' expr
 //             | expr
@@ -60,6 +61,8 @@ pub enum StmtKind {
 	while_stmt
 	for_range_stmt
 	for_in_stmt
+	break_stmt
+	continue_stmt
 	ret_stmt
 	assert_stmt
 }
@@ -230,6 +233,14 @@ fn (mut p Parser) parse_stmt() !Stmt {
 				e = p.parse_expr()!
 			}
 			return Stmt{ kind: .ret_stmt, expr: e, has_val: has_val, line: t.line }
+		}
+		.kw_break {
+			p.advance()
+			return Stmt{ kind: .break_stmt, line: t.line }
+		}
+		.kw_continue {
+			p.advance()
+			return Stmt{ kind: .continue_stmt, line: t.line }
 		}		.kw_assert {
 			p.advance()
 			mut e := Expr{}

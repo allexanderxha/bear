@@ -94,6 +94,15 @@ fn main() {
     for i in 0..5 { ... }        // 0 1 2 3 4   (exclusive ..)
     for i in 1...3 { ... }       // 1 2 3       (inclusive ...)
 
+    for i in 0..10 {
+        if i == 2 {
+            continue             // skip this iteration
+        }
+        if i == 5 {
+            break                // leave the loop early
+        }
+    }
+
     let grid = [[1, 2], [3, 4]]  // nested arrays
     println(grid[1][0])          // 3
 
@@ -109,9 +118,11 @@ fn main() {
   `push(a, v)`; array literals may nest
 - for loops: `for x in arr { }` and ranges `for i in 0..10 { }` /
   `for i in 0...10 { }`; loop variables are scoped to the loop body
+- `break` / `continue` inside `while` and `for` loops (in `for` loops
+  `continue` advances the loop variable / iterator first)
 - operators: `+ - * / %`, `== != < <= > >=`, `and or not`, unary `-`
-- statements: `let`, assignment, `if/else`, `while`, `for`, `return`, `assert`,
-  calls, `print(...)` / `println(...)`
+- statements: `let`, assignment, `if/else`, `while`, `for`, `break`,
+  `continue`, `return`, `assert`, calls, `print(...)` / `println(...)`
 - comments: `//`
 
 ## Assembly

@@ -34,6 +34,8 @@ pub enum TokKind {
 	kw_while
 	kw_for
 	kw_in
+	kw_break
+	kw_continue
 	kw_return
 	kw_true
 	kw_false
@@ -251,6 +253,8 @@ fn (mut l Lexer) lex_ident(line int) Tok {
 		'while' { TokKind.kw_while }
 		'for' { TokKind.kw_for }
 		'in' { TokKind.kw_in }
+		'break' { TokKind.kw_break }
+		'continue' { TokKind.kw_continue }
 		'return' { TokKind.kw_return }
 		'true' { TokKind.kw_true }
 		'false' { TokKind.kw_false }

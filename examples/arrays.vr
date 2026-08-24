@@ -65,6 +65,29 @@ fn main() {
 	println("i is back to ")
 	println(i)              // 100
 
+	// break and continue
+	for i in 0..10 {
+		if i == 2 {
+			continue        // skip 2
+		}
+		if i == 5 {
+			break           // stop at 5
+		}
+		print(i)
+		print(" ")
+	}
+	println("")
+
+	// find the first even number in an array
+	let found = -1
+	for x in a {
+		if x % 2 == 0 {
+			found = x
+			break
+		}
+	}
+	println("first even in a: " + found)   // 10
+
 	assert sum([1, 2, 3, 4]) == 10
 	assert len(squares) == 5
 	assert squares[4] == 16
