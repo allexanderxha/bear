@@ -10,6 +10,8 @@ pub enum TokKind {
 	rparen
 	lbrace
 	rbrace
+	lbracket
+	rbracket
 	comma
 	plus
 	minus
@@ -23,11 +25,15 @@ pub enum TokKind {
 	gt
 	ge
 	assign
+	dotdot
+	dotdotdot
 	kw_fn
 	kw_let
 	kw_if
 	kw_else
 	kw_while
+	kw_for
+	kw_in
 	kw_return
 	kw_true
 	kw_false
@@ -127,6 +133,26 @@ fn (mut l Lexer) next() !Tok {
 			l.advance()
 			return Tok{ kind: .rbrace, lit: '}', line: line }
 		}
+		`[` {
+			l.advance()
+			return Tok{ kind: .lbracket, lit: '[', line: line }
+		}
+		`]` {
+			l.advance()
+			return Tok{ kind: .rbracket, lit: ']', line: line }
+		}
+		`.` {
+			l.advance()
+			if l.peek() == `.` {
+				l.advance()
+				if l.peek() == `.` {
+					l.advance()
+					return Tok{ kind: .dotdotdot, lit: '...', line: line }
+				}
+				return Tok{ kind: .dotdot, lit: '..', line: line }
+			}
+			return error('unexpected character "." at line ${line}')
+		}
 		`,` {
 			l.advance()
 			return Tok{ kind: .comma, lit: ',', line: line }
@@ -223,6 +249,8 @@ fn (mut l Lexer) lex_ident(line int) Tok {
 		'if' { TokKind.kw_if }
 		'else' { TokKind.kw_else }
 		'while' { TokKind.kw_while }
+		'for' { TokKind.kw_for }
+		'in' { TokKind.kw_in }
 		'return' { TokKind.kw_return }
 		'true' { TokKind.kw_true }
 		'false' { TokKind.kw_false }

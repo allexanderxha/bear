@@ -173,6 +173,22 @@ pub fn assemble(src string) !obj.Obj {
 				o.code << u8(31)
 				o.code << obj.encode_i64(parse_int(arg, 'enter')!)
 			}
+			'mkarray' {
+				o.code << u8(32)
+				o.code << obj.encode_i64(parse_int(arg, 'mkarray')!)
+			}
+			'aget' {
+				o.code << u8(33)
+			}
+			'aset' {
+				o.code << u8(34)
+			}
+			'alen' {
+				o.code << u8(35)
+			}
+			'apush' {
+				o.code << u8(36)
+			}
 			else {
 				return error('unknown instruction "${op}"')
 			}
@@ -238,10 +254,11 @@ fn instr_len(line string) !int {
 	op := parts[0]
 	match op {
 		'halt', 'pop', 'dup', 'add', 'sub', 'mul', 'div', 'mod', 'neg', 'eq', 'ne', 'lt', 'le',
-		'gt', 'ge', 'and', 'or', 'not', 'ret', 'retv', 'print', 'println', 'assert' {
+		'gt', 'ge', 'and', 'or', 'not', 'ret', 'retv', 'print', 'println', 'assert', 'aget',
+		'aset', 'alen', 'apush' {
 			return 1
 		}
-		'push_int', 'push_str', 'load', 'store', 'jmp', 'jz', 'jnz', 'enter' {
+		'push_int', 'push_str', 'load', 'store', 'jmp', 'jz', 'jnz', 'enter', 'mkarray' {
 			return 9
 		}
 		'call' {

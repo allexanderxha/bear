@@ -1,9 +1,11 @@
 // vm.v — the VuurRaaf runtime: a small stack-based virtual machine.
 //
-// Stack values are 64-bit tagged integers: odd values are string handles into
-// the runtime string heap (handle = value >> 1); even values are encoded
-// numbers (value = raw << 1). Encoding numbers as even values means no
-// integer ever collides with a string handle.
+// Stack values are 64-bit tagged integers with two tag bits:
+//   low bits 00  -> encoded number  (value = raw << 2)
+//   low bits 01  -> string handle   (handle = value >> 2, into v.strings)
+//   low bits 11  -> array handle    (handle = value >> 2, into v.arrays)
+// Encoding numbers with a constant shift means no integer ever collides with
+// a string or array handle.
 //
 // Call convention: CALL pushes a frame (retaddr, old bp, argc) and copies the
 // arguments into the callee's local slots; the callee reserves extra locals
@@ -45,6 +47,11 @@ const op_print = u8(28)
 const op_println = u8(29)
 const op_assert = u8(30)
 const op_enter = u8(31)
+const op_mkarray = u8(32)
+const op_aget = u8(33)
+const op_aset = u8(34)
+const op_alen = u8(35)
+const op_apush = u8(36)
 
 const stack_cap = 65536
 
@@ -52,6 +59,7 @@ struct Vm {
 mut:
 	code    []u8
 	strings []string
+	arrays  [][]i64
 	stack   []i64
 	sp      int
 	bp      int
@@ -173,6 +181,9 @@ fn (mut v Vm) exec() ! {
 				if v.is_str(a) {
 					return error('cannot negate a string')
 				}
+				if v.is_arr(a) {
+					return error('cannot negate an array')
+				}
 				v.push(v.enc_int(-v.dec_int(a)))!
 			}
 			op_eq {
@@ -280,6 +291,60 @@ fn (mut v Vm) exec() ! {
 					v.push(0)!
 				}
 			}
+			op_mkarray {
+				v.ip++
+				n := int(v.read_i64())
+				mut arr := []i64{len: n}
+				for i := n - 1; i >= 0; i-- {
+					arr[i] = v.pop()!
+				}
+				v.arrays << arr
+				v.push(v.mkarr(v.arrays.len - 1))!
+			}
+			op_aget {
+				v.ip++
+				idx := int(v.dec_int(v.pop()!))
+				h := v.pop()!
+				if !v.is_arr(h) || !v.valid_arr_handle(h) {
+					return error('indexing a non-array value')
+				}
+				a := v.arrays[v.hand(h)]
+				if idx < 0 || idx >= a.len {
+					return error('array index ${idx} out of bounds (len ${a.len})')
+				}
+				v.push(a[idx])!
+			}
+			op_aset {
+				v.ip++
+				val := v.pop()!
+				idx := int(v.dec_int(v.pop()!))
+				h := v.pop()!
+				if !v.is_arr(h) || !v.valid_arr_handle(h) {
+					return error('indexing a non-array value')
+				}
+				if idx < 0 || idx >= v.arrays[v.hand(h)].len {
+					return error('array index ${idx} out of bounds (len ${v.arrays[v.hand(h)].len})')
+				}
+				v.arrays[v.hand(h)][idx] = val
+			}
+			op_alen {
+				v.ip++
+				h := v.pop()!
+				if !v.is_arr(h) || !v.valid_arr_handle(h) {
+					return error('len() on a non-array value')
+				}
+				v.push(v.enc_int(i64(v.arrays[v.hand(h)].len)))!
+			}
+			op_apush {
+				v.ip++
+				val := v.pop()!
+				h := v.pop()!
+				if !v.is_arr(h) || !v.valid_arr_handle(h) {
+					return error('push() on a non-array value')
+				}
+				v.arrays[v.hand(h)] << val
+				v.push(h)!
+			}
 			else {
 				return error('unknown opcode ${op} at ip ${v.ip}')
 			}
@@ -349,23 +414,31 @@ fn (mut v Vm) ret(with_val bool) ! {
 }
 
 fn (mut v Vm) is_str(x i64) bool {
-	return x & 1 == 1
+	return x & 3 == 1
+}
+
+fn (mut v Vm) is_arr(x i64) bool {
+	return x & 3 == 3
 }
 
 fn (mut v Vm) enc_int(x i64) i64 {
-	return x << 1
+	return x << 2
 }
 
 fn (mut v Vm) dec_int(x i64) i64 {
-	return x >> 1
+	return x >> 2
 }
 
 fn (mut v Vm) hand(x i64) int {
-	return int(x >> 1)
+	return int(x >> 2)
 }
 
 fn (mut v Vm) mkstr(idx int) i64 {
-	return (i64(idx) << 1) | 1
+	return (i64(idx) << 2) | 1
+}
+
+fn (mut v Vm) mkarr(idx int) i64 {
+	return (i64(idx) << 2) | 3
 }
 
 fn (mut v Vm) truthy(x i64) bool {
@@ -377,6 +450,9 @@ fn bool_i64(b bool) i64 {
 }
 
 fn (mut v Vm) add(a i64, b i64) !i64 {
+	if v.is_arr(a) || v.is_arr(b) {
+		return error('cannot add arrays with +')
+	}
 	if v.is_str(a) && v.is_str(b) {
 		return v.alloc_str(v.strings[v.hand(a)] + v.strings[v.hand(b)])
 	}
@@ -401,6 +477,9 @@ fn (mut v Vm) num_str(x i64) string {
 fn (mut v Vm) arith(a i64, b i64, op string) !i64 {
 	if v.is_str(a) || v.is_str(b) {
 		return error('cannot use strings with "${op}"')
+	}
+	if v.is_arr(a) || v.is_arr(b) {
+		return error('cannot use arrays with "${op}"')
 	}
 	x := v.dec_int(a)
 	y := v.dec_int(b)
@@ -430,6 +509,13 @@ fn (mut v Vm) arith(a i64, b i64, op string) !i64 {
 }
 
 fn (mut v Vm) cmp(a i64, b i64, op string) !i64 {
+	if v.is_arr(a) || v.is_arr(b) {
+		// arrays compare by identity (handle equality) with ==/!=
+		if op == '==' || op == '!=' {
+			return bool_i64(if op == '==' { a == b } else { a != b })
+		}
+		return error('cannot order arrays')
+	}
 	if v.is_str(a) && v.is_str(b) {
 		sa := v.strings[v.hand(a)]
 		sb := v.strings[v.hand(b)]
@@ -460,16 +546,44 @@ fn (mut v Vm) cmp(a i64, b i64, op string) !i64 {
 }
 
 fn (mut v Vm) print_val(x i64) {
-	if v.is_str(x) && v.valid_handle(x) {
-		print(v.strings[v.hand(x)])
-	} else {
-		print(v.dec_int(x))
+	print(v.val_str(x, 0))
+}
+
+// val_str renders a value: strings as-is, arrays as [a, b, ...] (with a depth
+// guard so self-referential arrays cannot hang the printer), numbers as ints.
+fn (mut v Vm) val_str(x i64, depth int) string {
+	if depth > 16 {
+		return '...'
 	}
+	if v.is_str(x) && v.valid_handle(x) {
+		return v.strings[v.hand(x)]
+	}
+	if v.is_arr(x) && v.valid_arr_handle(x) {
+		a := v.arrays[v.hand(x)]
+		mut s := '['
+		limit := if a.len > 20 { 20 } else { a.len }
+		for i in 0..limit {
+			if i > 0 {
+				s += ', '
+			}
+			s += v.val_str(a[i], depth + 1)
+		}
+		if a.len > limit {
+			s += ', ...'
+		}
+		return s + ']'
+	}
+	return v.dec_int(x).str()
 }
 
 fn (mut v Vm) valid_handle(x i64) bool {
 	h := v.hand(x)
 	return h >= 0 && h < v.strings.len
+}
+
+fn (mut v Vm) valid_arr_handle(x i64) bool {
+	h := v.hand(x)
+	return h >= 0 && h < v.arrays.len
 }
 
 fn (mut v Vm) trace_op(op u8) {
@@ -506,6 +620,11 @@ fn (mut v Vm) trace_op(op u8) {
 		op_println { 'println' }
 		op_assert { 'assert' }
 		op_enter { 'enter' }
+		op_mkarray { 'mkarray' }
+		op_aget { 'aget' }
+		op_aset { 'aset' }
+		op_alen { 'alen' }
+		op_apush { 'apush' }
 		else { '??' }
 	}
 	mut s := ''
@@ -516,7 +635,7 @@ fn (mut v Vm) trace_op(op u8) {
 		if v.is_str(v.stack[i]) && v.valid_handle(v.stack[i]) {
 			s += '"${v.strings[v.hand(v.stack[i])]}"'
 		} else {
-			s += '${v.dec_int(v.stack[i])}'
+			s += v.val_str(v.stack[i], 0)
 		}
 	}
 	println('  [ip=${v.ip:4}] ${name:-9}  stack: [${s}]')

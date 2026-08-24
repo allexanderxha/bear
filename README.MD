@@ -61,45 +61,57 @@ Quick start:
 
 ## The VuurRaaf language
 
-A small, V-flavored language. Everything is a 64-bit integer or a string
-(strings concatenate with `+` and compare with `==`/`!=`; `print`/`println`
-accept both).
+A small, V-flavored language. Values are 64-bit integers, strings, or arrays
+(strings concatenate with `+` and compare with `==`/`!=`; arrays are mutable
+and compare by identity).
 
 ```
-fn greet(name) {
-    println("hello, " + name + "!")
-}
-
-fn fib(n) {
-    if n < 2 {
-        return n
+fn sum(items) {
+    let total = 0
+    for x in items {            // iterate an array
+        total = total + x
     }
-    return fib(n - 1) + fib(n - 2)
+    return total
 }
 
 fn main() {
-    let x = 6 * 7                       // let with type inference
-    assert x == 42                       // checked by the vm at runtime
-    let big = x > 40 and x < 50          // and / or / not, short-circuiting
+    let x = 6 * 7
+    assert x == 42
+    let big = x > 40 and x < 50 // and / or / not, short-circuiting
     if big {
         println("x is big")
     } else {
         println("x is small")
     }
-    let i = 0
-    while i < 3 {
-        println("counting " + i)         // "counting 0", ...
-        i = i + 1
-    }
-    println(fib(10))                     // 55
+
+    let a = [10, 20, 30]
+    a[1] = 99                    // index assignment
+    push(a, 40)                  // grow in place
+    println(a)                   // [10, 99, 30, 40]
+    println(len(a))              // 4
+    println(sum(a))              // 179
+
+    for i in 0..5 { ... }        // 0 1 2 3 4   (exclusive ..)
+    for i in 1...3 { ... }       // 1 2 3       (inclusive ...)
+
+    let grid = [[1, 2], [3, 4]]  // nested arrays
+    println(grid[1][0])          // 3
+
+    let i = 100
+    for i in 0..3 { ... }        // loop vars are scoped to the loop
+    println(i)                   // 100
 }
 ```
 
 - functions: `fn name(a, b) { ... }` with `return expr`
 - variables: `let name = expr`, reassignment `name = expr`
+- arrays: `[e1, e2, ...]`, indexing `a[i]` (read and write), `len(a)`,
+  `push(a, v)`; array literals may nest
+- for loops: `for x in arr { }` and ranges `for i in 0..10 { }` /
+  `for i in 0...10 { }`; loop variables are scoped to the loop body
 - operators: `+ - * / %`, `== != < <= > >=`, `and or not`, unary `-`
-- statements: `let`, assignment, `if/else`, `while`, `return`, `assert`, calls,
-  `print(...)` / `println(...)`
+- statements: `let`, assignment, `if/else`, `while`, `for`, `return`, `assert`,
+  calls, `print(...)` / `println(...)`
 - comments: `//`
 
 ## Assembly
@@ -125,7 +137,7 @@ helper:
 
 Opcodes: `halt push_int push_str load store pop dup add sub mul div mod neg
 eq ne lt le gt ge and or not jmp jz jnz call ret retv print println assert
-enter`.
+enter mkarray aget aset alen apush`.
 
 ## Formats
 
@@ -141,15 +153,17 @@ enter`.
 | `compiler/`  | lexer, recursive-descent parser, bytecode codegen (VROBJ)   |
 | `assembler/` | `.vasm` -> VROBJ                                            |
 | `linker/`    | resolves relocations, rebases strings, emits VRBIN          |
-| `vm/`        | stack VM: tagged values, call frames, string heap, tracing  |
+| `vm/`        | stack VM: tagged values, call frames, string/array heaps    |
 | `obj/`       | VROBJ/VRBIN binary formats                                  |
 | `bin/`       | small standalone tools: `tl_alloc.v`, `tl_loader.v`         |
 
-The VM is a stack machine with 64-bit tagged values (numbers are stored
-shifted left so no integer collides with a string handle). Calls push a frame
-(return address, base pointer, argc), copy arguments into local slots, and
-reserve extra locals with `enter n`. `vr debug` prints every instruction with
-the stack contents.
+The VM is a stack machine with 64-bit tagged values using two tag bits:
+numbers are stored shifted left by two, string handles end in `01`, array
+handles in `11` — so no integer ever collides with a heap handle. Arrays live
+in a growable heap (`mkarray`/`aget`/`aset`/`alen`/`apush`). Calls push a
+frame (return address, base pointer, argc), copy arguments into local slots,
+and reserve extra locals with `enter n`. `vr debug` prints every instruction
+with the stack contents (arrays rendered as `[1, 2, ...]`).
 
 ## Repository layout
 

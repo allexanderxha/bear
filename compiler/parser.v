@@ -6,8 +6,11 @@
 //   block    := '{' stmt* '}'
 //   stmt     := 'let' IDENT '=' expr
 //             | IDENT '=' expr
+//             | postfix '=' expr            (a[i] = v)
 //             | 'if' cond block ['else' block]
 //             | 'while' cond block
+//             | 'for' IDENT 'in' range block        (range := expr '..' expr | expr '...' expr)
+//             | 'for' IDENT 'in' expr block          (iterate an array)
 //             | 'return' [expr]
 //             | 'assert' expr
 //             | expr
@@ -27,6 +30,8 @@ pub enum ExprKind {
 	str_lit
 	bool_lit
 	ident
+	array_lit
+	index
 	unary
 	binary
 	call
@@ -41,6 +46,7 @@ pub mut:
 	op    TokKind
 	left  &Expr = unsafe { nil }
 	right &Expr = unsafe { nil }
+	elems []Expr
 	args  []Expr
 	line  int
 }
@@ -49,22 +55,28 @@ pub enum StmtKind {
 	expr_stmt
 	let_stmt
 	assign_stmt
+	index_assign
 	if_stmt
 	while_stmt
+	for_range_stmt
+	for_in_stmt
 	ret_stmt
 	assert_stmt
 }
 
 pub struct Stmt {
 pub mut:
-	kind    StmtKind
-	target  string
-	expr    Expr
-	cond    Expr
-	body    []Stmt
-	els     []Stmt
-	has_val bool
-	line    int
+	kind      StmtKind
+	target    string
+	expr      Expr
+	cond      Expr
+	base      Expr // index_assign: the indexed expression
+	idx       Expr // index_assign: the index expression
+	body      []Stmt
+	els       []Stmt
+	has_val   bool
+	inclusive bool // for_range_stmt: `..` (false) vs `...` (true)
+	line      int
 }
 
 pub struct FnDecl {
@@ -195,6 +207,21 @@ fn (mut p Parser) parse_stmt() !Stmt {
 			body := p.parse_block()!
 			return Stmt{ kind: .while_stmt, cond: cond, body: body, line: t.line }
 		}
+		.kw_for {
+			p.advance()
+			name := p.expect(.ident, 'loop variable')!
+			p.expect(.kw_in, "'in'")!
+			first := p.parse_expr()!
+			if p.cur().kind == .dotdot || p.cur().kind == .dotdotdot {
+				inclusive := p.cur().kind == .dotdotdot
+				p.advance()
+				end := p.parse_expr()!
+				body := p.parse_block()!
+				return Stmt{ kind: .for_range_stmt, target: name.lit, expr: first, cond: end, inclusive: inclusive, body: body, line: t.line }
+			}
+			body := p.parse_block()!
+			return Stmt{ kind: .for_in_stmt, target: name.lit, expr: first, body: body, line: t.line }
+		}
 		.kw_return {
 			p.advance()
 			mut e := Expr{}
@@ -222,6 +249,16 @@ fn (mut p Parser) parse_stmt() !Stmt {
 				e := p.parse_expr()!
 				return Stmt{ kind: .assign_stmt, target: t.lit, expr: e, line: t.line }
 			}
+			if p.cur().kind == .lbracket {
+				// a[i] = v  or  a[i] (expression statement)
+				e := p.parse_index_chain(t)!
+				if p.cur().kind == .assign {
+					p.advance()
+					rhs := p.parse_expr()!
+					return Stmt{ kind: .index_assign, base: *e.left, idx: *e.right, expr: rhs, line: t.line }
+				}
+				return Stmt{ kind: .expr_stmt, expr: e, line: t.line }
+			}
 			e := p.parse_call_or_ident(t)!
 			return Stmt{ kind: .expr_stmt, expr: e, line: t.line }
 		}
@@ -248,6 +285,13 @@ fn bin_node(op TokKind, left Expr, right Expr, line int) Expr {
 fn unary_node(op TokKind, operand Expr, line int) Expr {
 	mut o := operand
 	return Expr{ kind: .unary, op: op, right: &o, line: line }
+}
+
+// index_node builds `base[idx]`.
+fn index_node(base Expr, idx Expr, line int) Expr {
+	mut b := base
+	mut i := idx
+	return Expr{ kind: .index, left: &b, right: &i, line: line }
 }
 
 fn (mut p Parser) parse_expr() !Expr {
@@ -321,7 +365,32 @@ fn (mut p Parser) parse_unary() !Expr {
 		e := p.parse_unary()!
 		return unary_node(t.kind, e, t.line)
 	}
-	return p.parse_primary()!
+	return p.parse_postfix()!
+}
+
+// parse_postfix handles indexing: `base[expr]`, possibly chained `a[i][j]`.
+fn (mut p Parser) parse_postfix() !Expr {
+	mut e := p.parse_primary()!
+	for p.cur().kind == .lbracket {
+		p.advance()
+		idx := p.parse_expr()!
+		p.expect(.rbracket, "']'")!
+		e = index_node(e, idx, e.line)
+	}
+	return e
+}
+
+// parse_index_chain is like parse_postfix but starts from an already-consumed
+// identifier token (used for statements like `a[i] = v`).
+fn (mut p Parser) parse_index_chain(t Tok) !Expr {
+	mut e := Expr{ kind: .ident, name: t.lit, line: t.line }
+	for p.cur().kind == .lbracket {
+		p.advance()
+		idx := p.parse_expr()!
+		p.expect(.rbracket, "']'")!
+		e = index_node(e, idx, t.line)
+	}
+	return e
 }
 
 fn (mut p Parser) parse_primary() !Expr {
@@ -348,6 +417,22 @@ fn (mut p Parser) parse_primary() !Expr {
 			e := p.parse_expr()!
 			p.expect(.rparen, "')'")!
 			return e
+		}
+		.lbracket {
+			p.advance()
+			mut elems := []Expr{}
+			if p.cur().kind != .rbracket {
+				for {
+					elems << p.parse_expr()!
+					if p.cur().kind == .comma {
+						p.advance()
+						continue
+					}
+					break
+				}
+			}
+			p.expect(.rbracket, "']'")!
+			return Expr{ kind: .array_lit, elems: elems, line: t.line }
 		}
 		.ident {
 			p.advance()
