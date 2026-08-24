@@ -3,9 +3,10 @@
 // Stack values are 64-bit tagged integers with two tag bits:
 //   low bits 00  -> encoded number  (value = raw << 2)
 //   low bits 01  -> string handle   (handle = value >> 2, into v.strings)
+//   low bits 10  -> struct handle   (handle = value >> 2, into v.structs)
 //   low bits 11  -> array handle    (handle = value >> 2, into v.arrays)
 // Encoding numbers with a constant shift means no integer ever collides with
-// a string or array handle.
+// a string, struct, or array handle.
 //
 // Call convention: CALL pushes a frame (retaddr, old bp, argc) and copies the
 // arguments into the callee's local slots; the callee reserves extra locals
@@ -52,14 +53,30 @@ const op_aget = u8(33)
 const op_aset = u8(34)
 const op_alen = u8(35)
 const op_apush = u8(36)
+const op_mkstruct = u8(37)
+const op_sget = u8(38)
+const op_sset = u8(39)
 
 const stack_cap = 65536
+
+// Field is one `name: value` entry of a struct value.
+struct Field {
+mut:
+	name string
+	val  i64
+}
+
+struct StructVal {
+mut:
+	fields []Field
+}
 
 struct Vm {
 mut:
 	code    []u8
 	strings []string
 	arrays  [][]i64
+	structs []StructVal
 	stack   []i64
 	sp      int
 	bp      int
@@ -183,6 +200,9 @@ fn (mut v Vm) exec() ! {
 				}
 				if v.is_arr(a) {
 					return error('cannot negate an array')
+				}
+				if v.is_struct(a) {
+					return error('cannot negate a struct')
 				}
 				v.push(v.enc_int(-v.dec_int(a)))!
 			}
@@ -345,6 +365,74 @@ fn (mut v Vm) exec() ! {
 				v.arrays[v.hand(h)] << val
 				v.push(h)!
 			}
+			op_mkstruct {
+				v.ip++
+				n := int(v.read_i64())
+				mut fields := []Field{len: n}
+				// stack holds (name, value) pairs; pop from the last field back
+				for i := n - 1; i >= 0; i-- {
+					val := v.pop()!
+					name := v.pop()!
+					if !v.is_str(name) || !v.valid_handle(name) {
+						return error('internal: struct field name is not a string')
+					}
+					fields[i] = Field{ name: v.strings[v.hand(name)], val: val }
+				}
+				v.structs << StructVal{ fields: fields }
+				v.push(v.mkstruct_handle(v.structs.len - 1))!
+			}
+			op_sget {
+				v.ip++
+				name := v.pop()!
+				h := v.pop()!
+				if !v.is_struct(h) || !v.valid_struct_handle(h) {
+					return error('field access on a non-struct value')
+				}
+				if !v.is_str(name) || !v.valid_handle(name) {
+					return error('internal: field name is not a string')
+				}
+				fname := v.strings[v.hand(name)]
+				mut found := false
+				for f in v.structs[v.hand(h)].fields {
+					if f.name == fname {
+						v.push(f.val)!
+						found = true
+						break
+					}
+				}
+				if !found {
+					return error('no field "${fname}" on struct')
+				}
+			}
+			op_sset {
+				v.ip++
+				// stack: [struct, value, "name"] — the name is on top
+				name := v.pop()!
+				val := v.pop()!
+				h := v.pop()!
+				if !v.is_struct(h) || !v.valid_struct_handle(h) {
+					return error('field assignment on a non-struct value')
+				}
+				if !v.is_str(name) || !v.valid_handle(name) {
+					return error('internal: field name is not a string')
+				}
+				fname := v.strings[v.hand(name)]
+				mut s := v.structs[v.hand(h)]
+				mut found := false
+				for i, f in s.fields {
+					if f.name == fname {
+						s.fields[i].val = val
+						found = true
+						break
+					}
+				}
+				if !found {
+					// setting a missing field adds it, so records can be built
+					// incrementally from an empty `{}`
+					s.fields << Field{ name: fname, val: val }
+				}
+				v.structs[v.hand(h)] = s
+			}
 			else {
 				return error('unknown opcode ${op} at ip ${v.ip}')
 			}
@@ -421,6 +509,10 @@ fn (mut v Vm) is_arr(x i64) bool {
 	return x & 3 == 3
 }
 
+fn (mut v Vm) is_struct(x i64) bool {
+	return x & 3 == 2
+}
+
 fn (mut v Vm) enc_int(x i64) i64 {
 	return x << 2
 }
@@ -441,6 +533,10 @@ fn (mut v Vm) mkarr(idx int) i64 {
 	return (i64(idx) << 2) | 3
 }
 
+fn (mut v Vm) mkstruct_handle(idx int) i64 {
+	return (i64(idx) << 2) | 2
+}
+
 fn (mut v Vm) truthy(x i64) bool {
 	return x != 0
 }
@@ -452,6 +548,9 @@ fn bool_i64(b bool) i64 {
 fn (mut v Vm) add(a i64, b i64) !i64 {
 	if v.is_arr(a) || v.is_arr(b) {
 		return error('cannot add arrays with +')
+	}
+	if v.is_struct(a) || v.is_struct(b) {
+		return error('cannot add structs with +')
 	}
 	if v.is_str(a) && v.is_str(b) {
 		return v.alloc_str(v.strings[v.hand(a)] + v.strings[v.hand(b)])
@@ -480,6 +579,9 @@ fn (mut v Vm) arith(a i64, b i64, op string) !i64 {
 	}
 	if v.is_arr(a) || v.is_arr(b) {
 		return error('cannot use arrays with "${op}"')
+	}
+	if v.is_struct(a) || v.is_struct(b) {
+		return error('cannot use structs with "${op}"')
 	}
 	x := v.dec_int(a)
 	y := v.dec_int(b)
@@ -515,6 +617,13 @@ fn (mut v Vm) cmp(a i64, b i64, op string) !i64 {
 			return bool_i64(if op == '==' { a == b } else { a != b })
 		}
 		return error('cannot order arrays')
+	}
+	if v.is_struct(a) || v.is_struct(b) {
+		// structs compare by identity (handle equality) with ==/!=
+		if op == '==' || op == '!=' {
+			return bool_i64(if op == '==' { a == b } else { a != b })
+		}
+		return error('cannot order structs')
 	}
 	if v.is_str(a) && v.is_str(b) {
 		sa := v.strings[v.hand(a)]
@@ -573,6 +682,21 @@ fn (mut v Vm) val_str(x i64, depth int) string {
 		}
 		return s + ']'
 	}
+	if v.is_struct(x) && v.valid_struct_handle(x) {
+		s := v.structs[v.hand(x)]
+		mut out := '{'
+		limit := if s.fields.len > 20 { 20 } else { s.fields.len }
+		for i in 0..limit {
+			if i > 0 {
+				out += ', '
+			}
+			out += s.fields[i].name + ': ' + v.val_str(s.fields[i].val, depth + 1)
+		}
+		if s.fields.len > limit {
+			out += ', ...'
+		}
+		return out + '}'
+	}
 	return v.dec_int(x).str()
 }
 
@@ -584,6 +708,11 @@ fn (mut v Vm) valid_handle(x i64) bool {
 fn (mut v Vm) valid_arr_handle(x i64) bool {
 	h := v.hand(x)
 	return h >= 0 && h < v.arrays.len
+}
+
+fn (mut v Vm) valid_struct_handle(x i64) bool {
+	h := v.hand(x)
+	return h >= 0 && h < v.structs.len
 }
 
 fn (mut v Vm) trace_op(op u8) {
@@ -625,6 +754,9 @@ fn (mut v Vm) trace_op(op u8) {
 		op_aset { 'aset' }
 		op_alen { 'alen' }
 		op_apush { 'apush' }
+		op_mkstruct { 'mkstruct' }
+		op_sget { 'sget' }
+		op_sset { 'sset' }
 		else { '??' }
 	}
 	mut s := ''

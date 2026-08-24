@@ -46,6 +46,9 @@ const op_aget = u8(33)
 const op_aset = u8(34)
 const op_alen = u8(35)
 const op_apush = u8(36)
+const op_mkstruct = u8(37)
+const op_sget = u8(38)
+const op_sset = u8(39)
 
 // compile parses and compiles VuurRaaf source into an object file.
 pub fn compile(src string) !obj.Obj {
@@ -170,6 +173,13 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.gen_expr(st.idx)!
 			g.gen_expr(st.expr)!
 			g.code << op_aset
+		}
+		.field_assign {
+			// a.b = v  →  a, v, "b"  sset   (field name on top of the stack)
+			g.gen_expr(st.base)!
+			g.gen_expr(st.expr)!
+			g.emit_field_name(st.target)
+			g.code << op_sset
 		}
 		.if_stmt {
 			else_l := g.new_label()
@@ -384,6 +394,21 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.code << op_mkarray
 			g.code << obj.encode_i64(i64(e.elems.len))
 		}
+		.struct_lit {
+			// for each field: push the name string then the value; mkstruct n
+			// pops the (name, value) pairs and builds the record
+			for f in e.fields {
+				g.emit_field_name(f.name)
+				g.gen_expr(f.val)!
+			}
+			g.code << op_mkstruct
+			g.code << obj.encode_i64(i64(e.fields.len))
+		}
+		.field {
+			g.gen_expr(*e.left)!
+			g.emit_field_name(e.name)
+			g.code << op_sget
+		}
 		.index {
 			g.gen_expr(*e.left)!
 			g.gen_expr(*e.right)!
@@ -520,6 +545,14 @@ fn (mut g Gen) gen_binary(e Expr) ! {
 			g.code << op
 		}
 	}
+}
+
+// emit_field_name pushes a field name as a string constant. Like string
+// literals it goes through a kind-1 relocation so multi-file links rebase it.
+fn (mut g Gen) emit_field_name(name string) {
+	g.code << op_push_s
+	g.code << obj.encode_i64(0)
+	g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: name, kind: 1 }
 }
 
 fn (mut g Gen) intern(s string) int {

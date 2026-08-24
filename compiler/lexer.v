@@ -13,6 +13,8 @@ pub enum TokKind {
 	lbracket
 	rbracket
 	comma
+	dot
+	colon
 	plus
 	minus
 	star
@@ -154,11 +156,15 @@ fn (mut l Lexer) next() !Tok {
 				}
 				return Tok{ kind: .dotdot, lit: '..', line: line }
 			}
-			return error('unexpected character "." at line ${line}')
+			return Tok{ kind: .dot, lit: '.', line: line }
 		}
 		`,` {
 			l.advance()
 			return Tok{ kind: .comma, lit: ',', line: line }
+		}
+		`:` {
+			l.advance()
+			return Tok{ kind: .colon, lit: ':', line: line }
 		}
 		`+` {
 			l.advance()

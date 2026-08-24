@@ -61,9 +61,9 @@ Quick start:
 
 ## The VuurRaaf language
 
-A small, V-flavored language. Values are 64-bit integers, strings, or arrays
-(strings concatenate with `+` and compare with `==`/`!=`; arrays are mutable
-and compare by identity).
+A small, V-flavored language. Values are 64-bit integers, strings, arrays, or
+structs (strings concatenate with `+` and compare with `==`/`!=`; arrays and
+structs are mutable references that compare by identity).
 
 ```
 fn sum(items) {
@@ -129,6 +129,12 @@ fn main() {
             println("workday")
         }
     }
+
+    let pt = { x: 3, y: 4 }      // struct literal: { name: value, ... }
+    println(pt.x)                // 3 — field access
+    pt.y = 5                     // field assignment
+    let p = { name: "amy", addr: { city: "nyc" } }  // nested structs
+    println(p.addr.city)         // nyc
 }
 ```
 
@@ -143,6 +149,10 @@ fn main() {
 - else-if chains: `if a { } else if b { } else { }`
 - `match`: `match expr { v1 { } v2 { } else { } }` — arms test equality on
   any comparable value (ints, strings, ...); the `else` arm is optional
+- structs: literals `{ name: value, ... }` (may nest and may be empty `{}`),
+  field access `a.b` and assignment `a.b = v` (chained: `a[i].b`, `a.b[i]`);
+  structs are mutable references (identity `==`/`!=`), and setting a missing
+  field adds it, so records can be built incrementally
 - operators: `+ - * / %`, `== != < <= > >=`, `and or not`, unary `-`
 - statements: `let`, assignment, `if/else`, `match`, `while`, `for`,
   `break`, `continue`, `return`, `assert`, calls, `print(...)` / `println(...)`
@@ -171,7 +181,11 @@ helper:
 
 Opcodes: `halt push_int push_str load store pop dup add sub mul div mod neg
 eq ne lt le gt ge and or not jmp jz jnz call ret retv print println assert
-enter mkarray aget aset alen apush`.
+enter mkarray aget aset alen apush mkstruct sget sset`.
+
+Struct opcodes: `mkstruct n` pops `n` (name, value) pairs and pushes a struct
+handle; `sget "field"` / `sset "field"` read/write a named field (pushing the
+field name as a string first, exactly like the compiler does).
 
 ## Formats
 

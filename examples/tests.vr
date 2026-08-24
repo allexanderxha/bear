@@ -185,6 +185,47 @@ fn test_match() {
 	assert hit == 0
 }
 
+fn test_structs() {
+	let p = { name: "bob", age: 30 }
+	assert p.name == "bob"
+	assert p.age == 30
+	p.age = 31
+	assert p.age == 31
+
+	// structs are reference values
+	let q = p
+	q.age = 40
+	assert p.age == 40
+
+	// nested structs
+	let person = { name: "amy", addr: { city: "nyc", zip: 10001 } }
+	assert person.addr.city == "nyc"
+	person.addr.zip = 90001
+	assert person.addr.zip == 90001
+
+	// structs in arrays
+	let pts = [{ x: 1, y: 2 }, { x: 10, y: 20 }]
+	assert pts[1].x == 10
+	pts[0].x = 99
+	assert pts[0].x == 99
+
+	// arrays in structs
+	let holder = { items: [1, 2, 3] }
+	holder.items[1] = 42
+	assert holder.items[1] == 42
+
+	// structs passed to and returned from functions
+	let pt = { x: 3, y: 4 }
+	assert pt.x * pt.x + pt.y * pt.y == 25
+
+	// identity comparison
+	let a = { n: 1 }
+	let b = a
+	let c = { n: 1 }
+	assert a == b
+	assert a != c
+}
+
 fn test_failing() {
 	// this one is meant to fail — shows up in `vr test` output
 	assert 1 == 2

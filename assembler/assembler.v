@@ -189,6 +189,26 @@ pub fn assemble(src string) !obj.Obj {
 			'apush' {
 				o.code << u8(36)
 			}
+			'mkstruct' {
+				o.code << u8(37)
+				o.code << obj.encode_i64(parse_int(arg, 'mkstruct')!)
+			}
+			'sget' {
+				// sget "name"  →  push_str "name"; sget
+				s := unquote(arg)!
+				o.code << u8(2)
+				o.code << obj.encode_i64(0) // placeholder — rebased by the linker
+				o.relocs << obj.Reloc{ offset: u32(o.code.len) - 8, name: s, kind: 1 }
+				o.code << u8(38)
+			}
+			'sset' {
+				// sset "name"  →  push_str "name"; sset
+				s := unquote(arg)!
+				o.code << u8(2)
+				o.code << obj.encode_i64(0) // placeholder — rebased by the linker
+				o.relocs << obj.Reloc{ offset: u32(o.code.len) - 8, name: s, kind: 1 }
+				o.code << u8(39)
+			}
 			else {
 				return error('unknown instruction "${op}"')
 			}
@@ -258,7 +278,11 @@ fn instr_len(line string) !int {
 		'aset', 'alen', 'apush' {
 			return 1
 		}
-		'push_int', 'push_str', 'load', 'store', 'jmp', 'jz', 'jnz', 'enter', 'mkarray' {
+		'sget', 'sset' {
+			return 10 // push_str (9) + the opcode (1)
+		}
+		'push_int', 'push_str', 'load', 'store', 'jmp', 'jz', 'jnz', 'enter', 'mkarray',
+		'mkstruct' {
 			return 9
 		}
 		'call' {

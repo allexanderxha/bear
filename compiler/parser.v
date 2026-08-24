@@ -6,7 +6,7 @@
 //   block    := '{' stmt* '}'
 //   stmt     := 'let' IDENT '=' expr
 //             | IDENT '=' expr
-//             | postfix '=' expr            (a[i] = v)
+//             | postfix '=' expr            (a[i] = v, a.b = v)
 //             | 'if' cond block ['else' ('if' ... | block)]
 //             | 'match' expr '{' (expr block | 'else' block)* '}'
 //             | 'while' cond block
@@ -25,6 +25,8 @@
 //   add      := mul (('*'|'/'|'%') mul)*
 //   mul      := ('not'|'-') mul | primary
 //   primary  := INT | STR | 'true' | 'false' | IDENT ['(' args ')'] | '(' expr ')'
+//             | '{' [IDENT ':' expr (',' IDENT ':' expr)*] '}'   (struct literal)
+//   postfix  := primary ('.' IDENT | '[' expr ']')*               (field access, indexing)
 module compiler
 
 pub enum ExprKind {
@@ -33,24 +35,34 @@ pub enum ExprKind {
 	bool_lit
 	ident
 	array_lit
+	struct_lit
 	index
+	field
 	unary
 	binary
 	call
 }
 
+// StructField is one `name: value` entry of a struct literal.
+pub struct StructField {
+pub mut:
+	name string
+	val  Expr
+}
+
 pub struct Expr {
 pub mut:
-	kind  ExprKind
-	int_v i64
-	str_v string
-	name  string
-	op    TokKind
-	left  &Expr = unsafe { nil }
-	right &Expr = unsafe { nil }
-	elems []Expr
-	args  []Expr
-	line  int
+	kind   ExprKind
+	int_v  i64
+	str_v  string
+	name   string // ident/call name, or the field name of a `.field` access
+	op     TokKind
+	left   &Expr = unsafe { nil }
+	right  &Expr = unsafe { nil }
+	elems  []Expr
+	fields []StructField // struct_lit: the named fields
+	args   []Expr
+	line   int
 }
 
 pub enum StmtKind {
@@ -58,6 +70,7 @@ pub enum StmtKind {
 	let_stmt
 	assign_stmt
 	index_assign
+	field_assign
 	if_stmt
 	match_stmt
 	while_stmt
@@ -283,22 +296,33 @@ fn (mut p Parser) parse_stmt() !Stmt {
 		}
 		.ident {
 			p.advance()
+			mut e := Expr{}
+			if p.cur().kind == .lparen {
+				// a call statement: foo(args), optionally chained foo().x
+				e = p.parse_call(t)!
+				e = p.parse_postfix_tail(e)!
+			} else {
+				e = p.parse_postfix_tail(Expr{ kind: .ident, name: t.lit, line: t.line })!
+			}
 			if p.cur().kind == .assign {
+				// assignment to an ident, an index, or a field
 				p.advance()
-				e := p.parse_expr()!
-				return Stmt{ kind: .assign_stmt, target: t.lit, expr: e, line: t.line }
-			}
-			if p.cur().kind == .lbracket {
-				// a[i] = v  or  a[i] (expression statement)
-				e := p.parse_index_chain(t)!
-				if p.cur().kind == .assign {
-					p.advance()
-					rhs := p.parse_expr()!
-					return Stmt{ kind: .index_assign, base: *e.left, idx: *e.right, expr: rhs, line: t.line }
+				rhs := p.parse_expr()!
+				match e.kind {
+					.ident {
+						return Stmt{ kind: .assign_stmt, target: e.name, expr: rhs, line: t.line }
+					}
+					.index {
+						return Stmt{ kind: .index_assign, base: *e.left, idx: *e.right, expr: rhs, line: t.line }
+					}
+					.field {
+						return Stmt{ kind: .field_assign, base: *e.left, target: e.name, expr: rhs, line: t.line }
+					}
+					else {
+						return error('cannot assign to this expression (line ${t.line})')
+					}
 				}
-				return Stmt{ kind: .expr_stmt, expr: e, line: t.line }
 			}
-			e := p.parse_call_or_ident(t)!
 			return Stmt{ kind: .expr_stmt, expr: e, line: t.line }
 		}
 		.kw_print, .kw_println {
@@ -350,6 +374,12 @@ fn index_node(base Expr, idx Expr, line int) Expr {
 	mut b := base
 	mut i := idx
 	return Expr{ kind: .index, left: &b, right: &i, line: line }
+}
+
+// field_node builds `base.name`.
+fn field_node(base Expr, name string, line int) Expr {
+	mut b := base
+	return Expr{ kind: .field, left: &b, name: name, line: line }
 }
 
 fn (mut p Parser) parse_expr() !Expr {
@@ -426,29 +456,36 @@ fn (mut p Parser) parse_unary() !Expr {
 	return p.parse_postfix()!
 }
 
-// parse_postfix handles indexing: `base[expr]`, possibly chained `a[i][j]`.
+// parse_postfix handles postfix operators after a primary: indexing
+// `a[i]` (chainable `a[i][j]`) and field access `a.b` (chainable `a.b.c`),
+// in any mix: `a[i].b`, `a.b[i]`, ...
 fn (mut p Parser) parse_postfix() !Expr {
 	mut e := p.parse_primary()!
-	for p.cur().kind == .lbracket {
-		p.advance()
-		idx := p.parse_expr()!
-		p.expect(.rbracket, "']'")!
-		e = index_node(e, idx, e.line)
-	}
-	return e
+	return p.parse_postfix_tail(e)!
 }
 
-// parse_index_chain is like parse_postfix but starts from an already-consumed
-// identifier token (used for statements like `a[i] = v`).
-fn (mut p Parser) parse_index_chain(t Tok) !Expr {
-	mut e := Expr{ kind: .ident, name: t.lit, line: t.line }
-	for p.cur().kind == .lbracket {
-		p.advance()
-		idx := p.parse_expr()!
-		p.expect(.rbracket, "']'")!
-		e = index_node(e, idx, t.line)
+// parse_postfix_tail continues a postfix chain from an already-parsed base.
+// It takes the base by value (Expr only holds pointers to heap-allocated
+// child nodes) and returns the extended chain.
+fn (mut p Parser) parse_postfix_tail(e Expr) !Expr {
+	mut cur := e
+	for {
+		if p.cur().kind == .lbracket {
+			p.advance()
+			idx := p.parse_expr()!
+			p.expect(.rbracket, "']'")!
+			cur = index_node(cur, idx, cur.line)
+			continue
+		}
+		if p.cur().kind == .dot {
+			p.advance()
+			name := p.expect(.ident, 'field name')!
+			cur = field_node(cur, name.lit, cur.line)
+			continue
+		}
+		break
 	}
-	return e
+	return cur
 }
 
 fn (mut p Parser) parse_primary() !Expr {
@@ -491,6 +528,26 @@ fn (mut p Parser) parse_primary() !Expr {
 			}
 			p.expect(.rbracket, "']'")!
 			return Expr{ kind: .array_lit, elems: elems, line: t.line }
+		}
+		.lbrace {
+			// struct literal: { name: expr, ... }
+			p.advance()
+			mut fields := []StructField{}
+			if p.cur().kind != .rbrace {
+				for {
+					name := p.expect(.ident, 'field name')!
+					p.expect(.colon, "':'")!
+					val := p.parse_expr()!
+					fields << StructField{ name: name.lit, val: val }
+					if p.cur().kind == .comma {
+						p.advance()
+						continue
+					}
+					break
+				}
+			}
+			p.expect(.rbrace, "'}'")!
+			return Expr{ kind: .struct_lit, fields: fields, line: t.line }
 		}
 		.ident {
 			p.advance()
