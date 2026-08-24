@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: vr-linux-amd64
+            binary: vr
+          - os: macos-latest
+            artifact: vr-macos-arm64
+            binary: vr
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install V
+        run: |
+          git clone --depth 1 https://github.com/vlang/v /tmp/v
+          cd /tmp/v && make
+          sudo ln -sf /tmp/v/v /usr/local/bin/v
+          v version
+
+      - name: Build toolchain
+        run: v -o ${{ matrix.binary }} .
+
+      - name: Smoke test
+        run: ./${{ matrix.binary }} run examples/hello.vr
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.binary }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches v.mod version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          MOD_VERSION=$(grep -oP "version: '\K[^"]+" v.mod)
+          if [ "$TAG" != "$MOD_VERSION" ]; then
+            echo "::error::Tag version (v${TAG}) does not match v.mod version (${MOD_VERSION})"
+            exit 1
+          fi
+          echo "Version check passed: v${TAG}"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            cp "$dir"/vr release/"$name"
+            chmod +x release/"$name"
+          done
+          ls -lh release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/*
