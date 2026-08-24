@@ -1,0 +1,46 @@
+// enum_count.vr — demonstrates built-in enum.count()
+
+enum Color {
+	red
+	green
+	blue
+}
+
+enum Day {
+	monday
+	tuesday
+	wednesday
+	thursday
+	friday
+	saturday
+	sunday
+}
+
+enum Coin {
+	penny
+	nickel
+	dime
+	quarter
+}
+
+fn main() {
+	// Color.count() = 3
+	let c = Color.red
+	assert c.count() == 3
+	println("Color has 3 variants")
+	
+	// Day.count() = 7
+	assert Day.monday.count() == 7
+	println("Day has 7 variants")
+	
+	// Coin.count() = 4
+	let coin = Coin.dime
+	assert coin.count() == 4
+	println("Coin has 4 variants")
+	
+	// on a variant literal directly
+	assert Color.blue.count() == 3
+	println("Color.blue.count() = 3")
+	
+	println("All count assertions passed!")
+}

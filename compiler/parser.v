@@ -1,10 +1,11 @@
 // parser.v — recursive-descent parser for the VuurRaaf language.
 //
 // Grammar (informal):
-//   program  := import* (struct | enum | fn)*
+//   program  := import* (struct | enum | const | fn)*
 //   import   := 'import' STRING
 //   struct   := 'struct' IDENT '{' [IDENT (',' IDENT)*] '}'
 //   enum     := 'enum' IDENT '{' [IDENT (',' IDENT)*] '}'
+//   const    := 'const' IDENT '=' expr
 //   fn       := 'fn' [ '(' IDENT IDENT ')' ] IDENT '(' [IDENT (',' IDENT)*] ')' block
 //   block    := '{' stmt* '}'
 //   stmt     := 'let' IDENT '=' expr
@@ -145,12 +146,21 @@ pub mut:
 	line     int
 }
 
+// ConstDecl is a `const NAME = value` declaration.
+pub struct ConstDecl {
+pub mut:
+	name  string
+	value Expr
+	line  int
+}
+
 pub struct Program {
 pub mut:
-	fns     []FnDecl
-	structs []StructDecl
-	enums   []EnumDecl
-	imports []ImportDecl
+	fns      []FnDecl
+	structs  []StructDecl
+	enums    []EnumDecl
+	imports  []ImportDecl
+	consts   []ConstDecl
 }
 
 pub fn parse(toks []Tok) !Program {
@@ -209,6 +219,7 @@ fn (mut p Parser) parse_program() !Program {
 		match p.cur().kind {
 			.kw_struct { prog.structs << p.parse_struct_decl()! }
 			.kw_enum { prog.enums << p.parse_enum_decl()! }
+			.kw_const { prog.consts << p.parse_const_decl()! }
 			.kw_fn { prog.fns << p.parse_fn()! }
 			else { return error('unexpected token "${p.cur().lit}" at line ${p.cur().line}') }
 		}
@@ -269,6 +280,15 @@ fn (mut p Parser) parse_enum_decl() !EnumDecl {
 	}
 	p.expect(.rbrace, "'}'")!
 	return EnumDecl{ name: name.lit, variants: variants, line: t.line }
+}
+
+// parse_const_decl parses `const NAME = expr`.
+fn (mut p Parser) parse_const_decl() !ConstDecl {
+	t := p.expect(.kw_const, "'const'")!
+	name := p.expect(.ident, 'constant name')!
+	p.expect(.assign, "'='")!
+	value := p.parse_expr()!
+	return ConstDecl{ name: name.lit, value: value, line: t.line }
 }
 
 // parse_fn parses `fn name(params) { }` or a method `fn (p Type) name(params) { }`.
@@ -710,16 +730,22 @@ fn (mut p Parser) parse_args() ![]Expr {
 	return args
 }
 
-// parse_struct_fields parses `{ name: expr, ... }` and returns the fields.
+// parse_struct_fields parses `{ name: expr, ... }` or `{ "key": expr, ... }` and returns the fields.
 fn (mut p Parser) parse_struct_fields() ![]StructField {
 	p.expect(.lbrace, "'{'")!
 	mut fields := []StructField{}
 	if p.cur().kind != .rbrace {
 		for {
-			name := p.expect(.ident, 'field name')!
+			// field name can be an identifier or a string literal (for maps)
+			mut fname := ''
+			if p.cur().kind == .str_lit {
+				fname = p.advance().lit
+			} else {
+				fname = p.expect(.ident, 'field name')!.lit
+			}
 			p.expect(.colon, "':'")!
 			val := p.parse_expr()!
-			fields << StructField{ name: name.lit, val: val }
+			fields << StructField{ name: fname, val: val }
 			if p.cur().kind == .comma {
 				p.advance()
 				continue
@@ -737,5 +763,6 @@ fn (mut p Parser) looks_like_struct_lit() bool {
 	if p.pos + 2 >= p.toks.len {
 		return false
 	}
-	return p.toks[p.pos + 1].kind == .ident && p.toks[p.pos + 2].kind == .colon
+	// typed struct literal: `{ ident :` or map literal: `{ "key" :`
+	return (p.toks[p.pos + 1].kind == .ident || p.toks[p.pos + 1].kind == .str_lit) && p.toks[p.pos + 2].kind == .colon
 }

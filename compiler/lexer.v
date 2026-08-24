@@ -51,6 +51,7 @@ pub enum TokKind {
 	kw_assert
 	kw_import
 	kw_enum
+	kw_const
 }
 
 pub struct Tok {
@@ -278,6 +279,7 @@ fn (mut l Lexer) lex_ident(line int) Tok {
 		'assert' { TokKind.kw_assert }
 		'import' { TokKind.kw_import }
 		'enum' { TokKind.kw_enum }
+		'const' { TokKind.kw_const }
 		else { TokKind.ident }
 	}
 	return Tok{ kind: kind, lit: lit, line: line }

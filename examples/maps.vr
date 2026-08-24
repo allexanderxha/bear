@@ -1,0 +1,62 @@
+// maps.vr — demonstrates map/dictionary features
+
+fn main() {
+	// create a map using struct literal syntax
+	let person = { "name": "alice", "age": 30 }
+	
+	// access with string index
+	assert person["name"] == "alice"
+	assert person["age"] == 30
+	println("person[\"name\"] = alice")
+	println("person[\"age\"] = 30")
+	
+	// update with string index
+	person["age"] = 31
+	assert person["age"] == 31
+	println("person[\"age\"] after update = 31")
+	
+	// add new keys dynamically
+	person["city"] = "nyc"
+	assert person["city"] == "nyc"
+	println("person[\"city\"] = nyc")
+	
+	// check key existence with has()
+	assert has(person, "name") == 1
+	assert has(person, "missing") == 0
+	println("has(person, \"name\") = 1")
+	println("has(person, \"missing\") = 0")
+	
+	// get all keys with keys()
+	let k = keys(person)
+	assert len(k) == 3
+	println("keys count = 3")
+	
+	// delete a key
+	delete(person, "city")
+	assert has(person, "city") == 0
+	assert len(person) == 2
+	println("after delete: len = 2")
+	
+	// len() works on maps
+	let scores = { "math": 95, "english": 88 }
+	assert len(scores) == 2
+	println("scores len = 2")
+	
+	// nested maps
+	let data = { "user": { "name": "bob" } }
+	assert data["user"]["name"] == "bob"
+	println("nested access = bob")
+	
+	// maps in arrays
+	let users = [{ "name": "a" }, { "name": "b" }]
+	assert users[0]["name"] == "a"
+	assert users[1]["name"] == "b"
+	println("maps in arrays OK")
+	
+	// empty map
+	let empty = {}
+	assert len(empty) == 0
+	println("empty map len = 0")
+	
+	println("All map assertions passed!")
+}

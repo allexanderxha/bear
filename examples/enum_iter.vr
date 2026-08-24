@@ -1,0 +1,64 @@
+// enum_iter.vr — demonstrates for-in over enum types
+
+enum Color {
+	red
+	green
+	blue
+}
+
+enum Day {
+	monday
+	tuesday
+	wednesday
+	thursday
+	friday
+	saturday
+	sunday
+}
+
+fn main() {
+	// iterate over Color variants
+	println("Colors:")
+	for c in Color {
+		print("  ")
+		println(c.to_string())
+	}
+	
+	// iterate and use count
+	let total = 0
+	for c in Color {
+		total = total + c.count()
+	}
+	assert total == 9 // 3 + 3 + 3
+	println("Sum of counts: 9")
+	
+	// iterate and use to_string in a match
+	for d in Day {
+		if d == Day.saturday or d == Day.sunday {
+			println(d.to_string() + " is weekend")
+		}
+	}
+	
+	// break and continue work
+	let weekdays = 0
+	for d in Day {
+		if d == Day.saturday {
+			break
+		}
+		weekdays = weekdays + 1
+	}
+	assert weekdays == 5
+	println("Weekday count: 5")
+	
+	// collect variant indices
+	let indices = []
+	for c in Color {
+		push(indices, c)
+	}
+	assert indices[0] == 0
+	assert indices[1] == 1
+	assert indices[2] == 2
+	println("Indices: 0, 1, 2")
+	
+	println("All enum iteration assertions passed!")
+}

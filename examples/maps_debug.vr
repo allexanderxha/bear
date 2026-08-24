@@ -1,0 +1,19 @@
+// maps_debug.vr — debug map keys function
+
+fn main() {
+	let person = { "name": "alice", "age": 30 }
+	
+	let k = keys(person)
+	let n = len(k)
+	println("len(k) = 2")
+	
+	if n > 0 {
+		println("key0")
+	}
+	if n > 1 {
+		println("key1")
+	}
+	
+	assert n == 2
+	println("keys OK")
+}

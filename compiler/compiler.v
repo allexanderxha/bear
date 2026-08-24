@@ -49,6 +49,10 @@ const op_apush = u8(36)
 const op_mkstruct = u8(37)
 const op_sget = u8(38)
 const op_sset = u8(39)
+const op_shas = u8(40)
+const op_sdel = u8(41)
+const op_slen = u8(42)
+const op_skeys = u8(43)
 
 // compile parses and compiles VuurRaaf source into an object file.
 pub fn compile(src string) !obj.Obj {
@@ -89,6 +93,7 @@ mut:
 	structs   map[string][]string // declared struct name -> field list
 	enums     map[string][]string // enum name -> variant list
 	enum_vals map[string]int      // 'Enum.variant' -> integer value
+	consts    map[string]i64      // constant name -> integer value
 	local_cnt int
 	argc      int
 	cur_fn    string
@@ -109,6 +114,20 @@ fn gen(prog Program) !obj.Obj {
 		g.enums[ed.name] = ed.variants
 		for i, v in ed.variants {
 			g.enum_vals['${ed.name}.${v}'] = i
+		}
+	}
+	// register constants
+	for cd in prog.consts {
+		if cd.name in g.consts {
+			return error('duplicate constant declaration "${cd.name}"')
+		}
+		// constants must be compile-time integer expressions
+		if cd.value.kind == .int_lit {
+			g.consts[cd.name] = cd.value.int_v
+		} else if cd.value.kind == .bool_lit {
+			g.consts[cd.name] = cd.value.int_v
+		} else {
+			return error('constant "${cd.name}" must be an integer or boolean literal (line ${cd.line})')
 		}
 	}
 	// register struct declarations
@@ -220,10 +239,18 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.code << obj.encode_i64(i64(idx))
 		}
 		.index_assign {
-			g.gen_expr(st.base)!
-			g.gen_expr(st.idx)!
-			g.gen_expr(st.expr)!
-			g.code << op_aset
+			// if the index is a string literal, use struct field set (map style)
+			if st.idx.kind == .str_lit {
+				g.gen_expr(st.base)!
+				g.gen_expr(st.expr)!
+				g.emit_field_name(st.idx.str_v)
+				g.code << op_sset
+			} else {
+				g.gen_expr(st.base)!
+				g.gen_expr(st.idx)!
+				g.gen_expr(st.expr)!
+				g.code << op_aset
+			}
 		}
 		.field_assign {
 			// a.b = v  →  a, v, "b"  sset   (field name on top of the stack)
@@ -350,6 +377,11 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.emit_label(end_l)
 		}
 		.for_in_stmt {
+			// for x in EnumType { ... }  →  iterate over enum variants as integers
+			if st.expr.kind == .ident && st.expr.name in g.enums {
+				g.gen_for_enum(st.target, st.expr.name, st.body, st.line)!
+				return
+			}
 			// for x in arr  →  idx := 0; while idx < len(arr) { x := arr[idx]; body; idx++ }
 			arr_idx := g.new_local()
 			idx_idx := g.new_local()
@@ -498,6 +530,20 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 		.method_call {
 			// p.dist(x)  →  call <Type>.dist  p, x
 			recv_t := g.method_receiver_type(e)!
+			// built-in: enum.to_string() generates a match on the integer value
+			if e.name == 'to_string' && recv_t in g.enums && e.args.len == 0 {
+				g.gen_enum_to_string(recv_t, *e.left, e.line)!
+				return
+			}
+			// built-in: enum.count() returns the number of variants
+			if e.name == 'count' && recv_t in g.enums && e.args.len == 0 {
+				g.gen_expr(*e.left)!
+				g.code << op_pop
+				variants := g.enums[recv_t]
+				g.code << op_push_i
+				g.code << obj.encode_i64(i64(variants.len))
+				return
+			}
 			g.gen_expr(*e.left)!
 			for a in e.args {
 				g.gen_expr(a)!
@@ -508,17 +554,28 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.code << obj.encode_i64(i64(e.args.len + 1)) // receiver + args
 		}
 		.index {
-			g.gen_expr(*e.left)!
-			g.gen_expr(*e.right)!
-			g.code << op_aget
+			// if the index is a string literal, use struct field access (map style)
+			if e.right.kind == .str_lit {
+				g.gen_expr(*e.left)!
+				g.emit_field_name(e.right.str_v)
+				g.code << op_sget
+			} else {
+				g.gen_expr(*e.left)!
+				g.gen_expr(*e.right)!
+				g.code << op_aget
+			}
 		}
 		.bool_lit {
 			g.code << op_push_i
 			g.code << obj.encode_i64(e.int_v)
 		}
 		.ident {
-			// check if it's an enum variant (e.g., Color.red)
-			if e.name in g.enum_vals {
+			// check if it's a constant
+			if e.name in g.consts {
+				g.code << op_push_i
+				g.code << obj.encode_i64(g.consts[e.name])
+			} else if e.name in g.enum_vals {
+				// check if it's an enum variant (e.g., Color.red)
 				g.code << op_push_i
 				g.code << obj.encode_i64(i64(g.enum_vals[e.name]))
 			} else {
@@ -570,6 +627,32 @@ fn (mut g Gen) gen_call(e Expr) ! {
 		g.gen_expr(e.args[0])!
 		g.gen_expr(e.args[1])!
 		g.code << op_apush
+		return
+	}
+	if e.name == 'has' {
+		if e.args.len != 2 {
+			return error('has() takes exactly two arguments (line ${e.line})')
+		}
+		g.gen_expr(e.args[0])!
+		g.gen_expr(e.args[1])!
+		g.code << op_shas
+		return
+	}
+	if e.name == 'delete' {
+		if e.args.len != 2 {
+			return error('delete() takes exactly two arguments (line ${e.line})')
+		}
+		g.gen_expr(e.args[0])!
+		g.gen_expr(e.args[1])!
+		g.code << op_sdel
+		return
+	}
+	if e.name == 'keys' {
+		if e.args.len != 1 {
+			return error('keys() takes exactly one argument (line ${e.line})')
+		}
+		g.gen_expr(e.args[0])!
+		g.code << op_skeys
 		return
 	}
 	for a in e.args {
@@ -674,7 +757,8 @@ fn (mut g Gen) expr_type(e Expr) string {
 
 // method_receiver_type resolves the struct type a method call is made on.
 // The receiver must be a plain variable whose type the compiler knows
-// (from a typed literal, an assignment, or a method receiver binding).
+// (from a typed literal, an assignment, or a method receiver binding)
+// or an enum variant expression (e.g. Color.red).
 fn (mut g Gen) method_receiver_type(e Expr) !string {
 	recv := e.left
 	if recv.kind == .ident {
@@ -683,7 +767,108 @@ fn (mut g Gen) method_receiver_type(e Expr) !string {
 			return t
 		}
 	}
+	// enum variant: Color.red  →  type is "Color"
+	if recv.kind == .field && recv.left.kind == .ident {
+		key := '${recv.left.name}.${recv.name}'
+		if key in g.enum_vals {
+			return recv.left.name
+		}
+	}
 	return error('cannot resolve method "${e.name}": receiver type unknown (line ${e.line})')
+}
+
+// gen_enum_to_string generates bytecode for `e.to_string()` on an enum value.
+// It emits a match statement that maps each integer variant to its string name.
+fn (mut g Gen) gen_enum_to_string(enum_name string, recv Expr, line int) ! {
+	variants := g.enums[enum_name] or {
+		return error('unknown enum "${enum_name}" at line ${line}')
+	}
+	// store the receiver in a temp local
+	subj_idx := g.new_local()
+	g.gen_expr(recv)!
+	g.emit_store(subj_idx)
+	// end label for the match
+	end_l := g.new_label()
+	for i, v in variants {
+		next_l := g.new_label()
+		// load subject, push variant integer, compare
+		g.emit_load(subj_idx)
+		g.code << op_push_i
+		g.code << obj.encode_i64(i64(i))
+		g.code << op_eq
+		g.code << op_jz
+		g.code << obj.encode_i64(0)
+		g.fixups << Fixup{ name: next_l, off: u32(g.code.len) - 8 }
+		// push the variant name as a string
+		g.code << op_push_s
+		g.code << obj.encode_i64(0)
+		g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: v, kind: 1 }
+		// jump to end
+		g.code << op_jmp
+		g.code << obj.encode_i64(0)
+		g.fixups << Fixup{ name: end_l, off: u32(g.code.len) - 8 }
+		g.emit_label(next_l)
+	}
+	// else: push "unknown"
+	g.code << op_push_s
+	g.code << obj.encode_i64(0)
+	g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: 'unknown', kind: 1 }
+	g.emit_label(end_l)
+}
+
+// gen_for_enum generates a for loop that iterates over all variants of an enum.
+// for x in Color { ... }  →  for i in 0..count { x = i; ... }  (x typed as Color)
+fn (mut g Gen) gen_for_enum(var_name string, enum_name string, body []Stmt, line int) ! {
+	variants := g.enums[enum_name] or {
+		return error('unknown enum "${enum_name}" at line ${line}')
+	}
+	count := variants.len
+	// i := 0
+	var_idx := g.new_local()
+	bound_idx := g.new_local()
+	g.code << op_push_i
+	g.code << obj.encode_i64(0)
+	g.emit_store(var_idx)
+	g.code << op_push_i
+	g.code << obj.encode_i64(i64(count))
+	g.emit_store(bound_idx)
+	loop_l := g.new_label()
+	inc_l := g.new_label()
+	end_l := g.new_label()
+	g.emit_label(loop_l)
+	g.emit_load(var_idx)
+	g.emit_load(bound_idx)
+	g.code << op_lt
+	g.code << op_jz
+	g.code << obj.encode_i64(0)
+	g.fixups << Fixup{ name: end_l, off: u32(g.code.len) - 8 }
+	g.loops << LoopCtx{ break_l: end_l, continue_l: inc_l }
+	prev := g.locals[var_name] or { -1 }
+	prev_t := g.types[var_name] or { '' }
+	g.locals[var_name] = var_idx
+	g.types[var_name] = enum_name // type the loop variable as the enum
+	for s in body {
+		g.gen_stmt(s)!
+	}
+	if prev >= 0 {
+		g.locals[var_name] = prev
+	} else {
+		g.locals.delete(var_name)
+	}
+	if prev_t.len > 0 {
+		g.types[var_name] = prev_t
+	}
+	g.loops.delete_last()
+	g.emit_label(inc_l)
+	g.emit_load(var_idx)
+	g.code << op_push_i
+	g.code << obj.encode_i64(1)
+	g.code << op_add
+	g.emit_store(var_idx)
+	g.code << op_jmp
+	g.code << obj.encode_i64(0)
+	g.fixups << Fixup{ name: loop_l, off: u32(g.code.len) - 8 }
+	g.emit_label(end_l)
 }
 
 // emit_field_name pushes a field name as a string constant. Like string

@@ -56,6 +56,10 @@ const op_apush = u8(36)
 const op_mkstruct = u8(37)
 const op_sget = u8(38)
 const op_sset = u8(39)
+const op_shas = u8(40)  // has(map, "key") -> 1 if key exists, 0 otherwise
+const op_sdel = u8(41)  // delete(map, "key") -> removes the key
+const op_slen = u8(42)  // slen(struct) -> number of fields
+const op_skeys = u8(43) // skeys(struct) -> array of field name strings
 
 const stack_cap = 65536
 
@@ -350,10 +354,13 @@ fn (mut v Vm) exec() ! {
 			op_alen {
 				v.ip++
 				h := v.pop()!
-				if !v.is_arr(h) || !v.valid_arr_handle(h) {
-					return error('len() on a non-array value')
+				if v.is_arr(h) && v.valid_arr_handle(h) {
+					v.push(v.enc_int(i64(v.arrays[v.hand(h)].len)))!
+				} else if v.is_struct(h) && v.valid_struct_handle(h) {
+					v.push(v.enc_int(i64(v.structs[v.hand(h)].fields.len)))!
+				} else {
+					return error('len() on a non-array, non-struct value')
 				}
-				v.push(v.enc_int(i64(v.arrays[v.hand(h)].len)))!
 			}
 			op_apush {
 				v.ip++
@@ -433,11 +440,99 @@ fn (mut v Vm) exec() ! {
 				}
 				v.structs[v.hand(h)] = s
 			}
+			op_shas {
+				v.op_shas()!
+			}
+			op_sdel {
+				v.op_sdel()!
+			}
+			op_slen {
+				v.op_slen()!
+			}
+			op_skeys {
+				v.op_skeys()!
+			}
 			else {
 				return error('unknown opcode ${op} at ip ${v.ip}')
 			}
 		}
 	}
+}
+
+// op_shas checks if a struct has a field with the given name.
+// stack: struct, "key"  →  pushes 1 if found, 0 if not.
+fn (mut v Vm) op_shas() ! {
+	v.ip++
+	name := v.pop()!
+	h := v.pop()!
+	if !v.is_struct(h) || !v.valid_struct_handle(h) {
+		return error('has() on a non-struct value')
+	}
+	if !v.is_str(name) || !v.valid_handle(name) {
+		return error('internal: field name is not a string')
+	}
+	fname := v.strings[v.hand(name)]
+	mut found := false
+	for f in v.structs[v.hand(h)].fields {
+		if f.name == fname {
+			found = true
+			break
+		}
+	}
+	v.push(v.enc_int(if found { 1 } else { 0 }))!
+}
+
+// op_sdel removes a field from a struct.
+// stack: struct, "key"  →  pushes the struct handle back.
+fn (mut v Vm) op_sdel() ! {
+	v.ip++
+	name := v.pop()!
+	h := v.pop()!
+	if !v.is_struct(h) || !v.valid_struct_handle(h) {
+		return error('delete() on a non-struct value')
+	}
+	if !v.is_str(name) || !v.valid_handle(name) {
+		return error('internal: field name is not a string')
+	}
+	fname := v.strings[v.hand(name)]
+	mut s := v.structs[v.hand(h)]
+	mut new_fields := []Field{}
+	for f in s.fields {
+		if f.name != fname {
+			new_fields << f
+		}
+	}
+	s.fields = new_fields
+	v.structs[v.hand(h)] = s
+	v.push(h)!
+}
+
+// op_slen returns the number of fields in a struct.
+// stack: struct  →  pushes field count.
+fn (mut v Vm) op_slen() ! {
+	v.ip++
+	h := v.pop()!
+	if !v.is_struct(h) || !v.valid_struct_handle(h) {
+		return error('len() on a non-struct value')
+	}
+	v.push(v.enc_int(i64(v.structs[v.hand(h)].fields.len)))!
+}
+
+// op_skeys returns an array of field name strings.
+// stack: struct  →  pushes array handle.
+fn (mut v Vm) op_skeys() ! {
+	v.ip++
+	h := v.pop()!
+	if !v.is_struct(h) || !v.valid_struct_handle(h) {
+		return error('keys() on a non-struct value')
+	}
+	mut arr := []i64{}
+	for f in v.structs[v.hand(h)].fields {
+		v.strings << f.name
+		arr << v.mkstr(v.strings.len - 1)
+	}
+	v.arrays << arr
+	v.push(v.mkarr(v.arrays.len - 1))!
 }
 
 fn (mut v Vm) read_i64() i64 {
@@ -757,6 +852,10 @@ fn (mut v Vm) trace_op(op u8) {
 		op_mkstruct { 'mkstruct' }
 		op_sget { 'sget' }
 		op_sset { 'sset' }
+		op_shas { 'shas' }
+		op_sdel { 'sdel' }
+		op_slen { 'slen' }
+		op_skeys { 'skeys' }
 		else { '??' }
 	}
 	mut s := ''
