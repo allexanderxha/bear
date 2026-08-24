@@ -1,0 +1,12 @@
+// fib.vr — recursive fibonacci, small enough to benchmark with `vr bench`.
+
+fn fib(n) {
+	if n < 2 {
+		return n
+	}
+	return fib(n - 1) + fib(n - 2)
+}
+
+fn main() {
+	println(fib(20))
+}

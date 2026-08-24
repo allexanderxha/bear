@@ -1,28 +1,53 @@
 // toolchain loader
+// Discovers and describes the toolchain components baked into the binary.
+// Run standalone with:  v run bin/tl_loader.v
 
-module tl_loader
+module main
 
 import os
-import v.vmod
 
-pub fn load_toolchain() {
-	// Load the toolchain modules and initialize them
-	// We call the package functions to load the toolchain modules and initialize them
-	// each package has their own load argument, which is passed to the package function.
-	toolchain_loader(load)
-	toolchain_alloc(load)
-	toolchain_compile(load)
-	toolchain_assemble(load)
-	toolchain_link(load)
-	toolchain_run(load)
-	toolchain_debug(load)
-	toolchain_help(load)
-	toolchain_version(load)
-	toolchain_info(load)
-	toolchain_config(load)
-	toolchain_test(load)
-	toolchain_bench(load)
-	toolchain_clean(load)
-	toolchain_up(load)
-	toolchain_symlink(load)
+struct Component {
+mut:
+	name    string
+	role    string
+	path    string
+	enabled bool
+}
+
+// load_toolchain returns the components that make up this toolchain.
+fn load_toolchain() []Component {
+	root := os.dir(os.executable())
+	return [
+		Component{
+			name:    'compiler'
+			role:    'lexer, parser, bytecode codegen'
+			path:    os.join_path(root, 'compiler')
+			enabled: true
+		},
+		Component{
+			name:    'assembler'
+			role:    'vasm -> vobj'
+			path:    os.join_path(root, 'assembler')
+			enabled: true
+		},
+		Component{
+			name:    'linker'
+			role:    'vobj set -> vbin'
+			path:    os.join_path(root, 'linker')
+			enabled: true
+		},
+		Component{
+			name:    'vm'
+			role:    'stack-based runtime'
+			path:    os.join_path(root, 'vm')
+			enabled: true
+		},
+	]
+}
+
+fn main() {
+	for c in load_toolchain() {
+		status := if c.enabled { 'loaded' } else { 'disabled' }
+		println('[${status}]  ${c.name:-12}  ${c.role}  (${c.path})')
+	}
 }

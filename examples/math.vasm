@@ -1,0 +1,29 @@
+; math.vasm — raw bytecode, hand-written in VuurRaaf assembly.
+; Assemble + link + run with:
+;   vr assemble examples/math.vasm
+;   vr link math.vobj -o math.vbin
+;   vr run math.vbin
+
+.global main
+
+main:
+    push_int 6
+    push_int 7
+    mul
+    println
+    push_str "computed 6 * 7 = 42"
+    println
+    push_int 40
+    push_int 2
+    call add 2        ; calls the exported `add` symbol below
+    println
+    halt
+
+; a callable function: takes two args, returns their sum
+.global add
+add:
+    enter 0           ; no extra locals (args were copied in by `call`)
+    load 0
+    load 1
+    add
+    retv

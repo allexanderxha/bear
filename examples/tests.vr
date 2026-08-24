@@ -1,0 +1,41 @@
+// tests.vr — functions named test_* are picked up by `vr test`.
+//   vr test examples/tests.vr
+
+fn add(a, b) {
+	return a + b
+}
+
+fn test_add() {
+	assert add(2, 3) == 5
+	assert add(-1, 1) == 0
+}
+
+fn test_strings() {
+	let a = "foo"
+	let b = "bar"
+	assert a + b == "foobar"
+	assert a != b
+	assert a == "foo"
+}
+
+fn test_loops() {
+	let total = 0
+	let i = 1
+	while i <= 10 {
+		total = total + i
+		i = i + 1
+	}
+	assert total == 55
+}
+
+fn test_booleans() {
+	let x = 7
+	assert x > 3 and x < 10
+	assert x == 7 or x == 8
+	assert not (x == 0)
+}
+
+fn test_failing() {
+	// this one is meant to fail — shows up in `vr test` output
+	assert 1 == 2
+}
