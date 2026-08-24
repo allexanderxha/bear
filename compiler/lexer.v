@@ -27,6 +27,10 @@ pub enum TokKind {
 	gt
 	ge
 	assign
+	plus_eq
+	minus_eq
+	star_eq
+	slash_eq
 	dotdot
 	dotdotdot
 	kw_fn
@@ -172,18 +176,34 @@ fn (mut l Lexer) next() !Tok {
 		}
 		`+` {
 			l.advance()
+			if l.peek() == `=` {
+				l.advance()
+				return Tok{ kind: .plus_eq, lit: '+=', line: line }
+			}
 			return Tok{ kind: .plus, lit: '+', line: line }
 		}
 		`-` {
 			l.advance()
+			if l.peek() == `=` {
+				l.advance()
+				return Tok{ kind: .minus_eq, lit: '-=', line: line }
+			}
 			return Tok{ kind: .minus, lit: '-', line: line }
 		}
 		`*` {
 			l.advance()
+			if l.peek() == `=` {
+				l.advance()
+				return Tok{ kind: .star_eq, lit: '*=', line: line }
+			}
 			return Tok{ kind: .star, lit: '*', line: line }
 		}
 		`/` {
 			l.advance()
+			if l.peek() == `=` {
+				l.advance()
+				return Tok{ kind: .slash_eq, lit: '/=', line: line }
+			}
 			return Tok{ kind: .slash, lit: '/', line: line }
 		}
 		`%` {

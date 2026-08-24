@@ -1,0 +1,34 @@
+// compound assignment operators: +=, -=, *=, /=
+
+fn main() {
+    let x = 10
+    println(x)
+    
+    x += 5
+    println(x)      // 15
+    
+    x -= 3
+    println(x)      // 12
+    
+    x *= 2
+    println(x)      // 24
+    
+    x /= 4
+    println(x)      // 6
+    
+    // compound assignment on arrays (field access for structs/maps)
+    let m = { "count": 0 }
+    m["count"] += 1
+    println(m["count"])    // 1
+    
+    m["count"] += 10
+    println(m["count"])    // 11
+    
+    // compound assignment on array index
+    let arr = [10, 20, 30]
+    arr[1] += 5
+    println(arr[1])        // 25
+    
+    arr[2] *= 3
+    println(arr[2])        // 90
+}

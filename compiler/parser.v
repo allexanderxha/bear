@@ -435,26 +435,56 @@ fn (mut p Parser) parse_stmt() !Stmt {
 			} else {
 				e = p.parse_postfix_tail(Expr{ kind: .ident, name: t.lit, line: t.line })!
 			}
-			if p.cur().kind == .assign {
-				// assignment to an ident, an index, or a field
-				p.advance()
-				rhs := p.parse_expr()!
-				match e.kind {
-					.ident {
-						return Stmt{ kind: .assign_stmt, target: e.name, expr: rhs, line: t.line }
-					}
-					.index {
-						return Stmt{ kind: .index_assign, base: *e.left, idx: *e.right, expr: rhs, line: t.line }
-					}
-					.field {
-						return Stmt{ kind: .field_assign, base: *e.left, target: e.name, expr: rhs, line: t.line }
-					}
-					else {
-						return error('cannot assign to this expression (line ${t.line})')
-					}
+		if p.cur().kind == .assign {
+			// assignment to an ident, an index, or a field
+			p.advance()
+			rhs := p.parse_expr()!
+			match e.kind {
+				.ident {
+					return Stmt{ kind: .assign_stmt, target: e.name, expr: rhs, line: t.line }
+				}
+				.index {
+					return Stmt{ kind: .index_assign, base: *e.left, idx: *e.right, expr: rhs, line: t.line }
+				}
+				.field {
+					return Stmt{ kind: .field_assign, base: *e.left, target: e.name, expr: rhs, line: t.line }
+				}
+				else {
+					return error('cannot assign to this expression (line ${t.line})')
 				}
 			}
-			return Stmt{ kind: .expr_stmt, expr: e, line: t.line }
+		}
+		// compound assignment: x += expr, a[i] += expr, a.b += expr
+		if p.cur().kind == .plus_eq || p.cur().kind == .minus_eq || p.cur().kind == .star_eq || p.cur().kind == .slash_eq {
+			op_tok := p.advance()
+			rhs := p.parse_expr()!
+			bin_op := match op_tok.kind {
+				.plus_eq { TokKind.plus }
+				.minus_eq { TokKind.minus }
+				.star_eq { TokKind.star }
+				.slash_eq { TokKind.slash }
+				else { return error('unexpected compound operator (line ${t.line})') }
+			}
+			// desugar: LHS op= RHS  →  LHS = LHS op RHS
+			match e.kind {
+				.ident {
+					full_rhs := bin_node(bin_op, e, rhs, op_tok.line)
+					return Stmt{ kind: .assign_stmt, target: e.name, expr: full_rhs, line: t.line }
+				}
+				.index {
+					full_rhs := bin_node(bin_op, e, rhs, op_tok.line)
+					return Stmt{ kind: .index_assign, base: *e.left, idx: *e.right, expr: full_rhs, line: t.line }
+				}
+				.field {
+					full_rhs := bin_node(bin_op, e, rhs, op_tok.line)
+					return Stmt{ kind: .field_assign, base: *e.left, target: e.name, expr: full_rhs, line: t.line }
+				}
+				else {
+					return error('cannot use compound assignment on this expression (line ${t.line})')
+				}
+			}
+		}
+		return Stmt{ kind: .expr_stmt, expr: e, line: t.line }
 		}
 		.kw_print, .kw_println {
 			p.advance()
