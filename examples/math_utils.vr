@@ -1,0 +1,23 @@
+// math_utils.vr — a small utility library for the import example
+
+fn add(a, b) {
+	return a + b
+}
+
+fn multiply(a, b) {
+	return a * b
+}
+
+fn factorial(n) {
+	if n <= 1 {
+		return 1
+	}
+	return n * factorial(n - 1)
+}
+
+fn fibonacci(n) {
+	if n <= 1 {
+		return n
+	}
+	return fibonacci(n - 1) + fibonacci(n - 2)
+}

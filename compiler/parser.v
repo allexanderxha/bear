@@ -1,8 +1,10 @@
 // parser.v — recursive-descent parser for the VuurRaaf language.
 //
 // Grammar (informal):
-//   program  := (struct | fn)*
+//   program  := import* (struct | enum | fn)*
+//   import   := 'import' STRING
 //   struct   := 'struct' IDENT '{' [IDENT (',' IDENT)*] '}'
+//   enum     := 'enum' IDENT '{' [IDENT (',' IDENT)*] '}'
 //   fn       := 'fn' [ '(' IDENT IDENT ')' ] IDENT '(' [IDENT (',' IDENT)*] ')' block
 //   block    := '{' stmt* '}'
 //   stmt     := 'let' IDENT '=' expr
@@ -129,10 +131,26 @@ pub mut:
 	line      int
 }
 
+pub struct ImportDecl {
+pub mut:
+	path string
+	line int
+}
+
+// EnumDecl is an `enum Name { variant1 variant2 ... }` declaration.
+pub struct EnumDecl {
+pub mut:
+	name     string
+	variants []string
+	line     int
+}
+
 pub struct Program {
 pub mut:
 	fns     []FnDecl
 	structs []StructDecl
+	enums   []EnumDecl
+	imports []ImportDecl
 }
 
 pub fn parse(toks []Tok) !Program {
@@ -182,11 +200,17 @@ fn (mut p Parser) parse_cond() !Expr {
 
 fn (mut p Parser) parse_program() !Program {
 	mut prog := Program{}
+	// imports come first
+	for p.cur().kind == .kw_import {
+		prog.imports << p.parse_import()!
+	}
+	// then top-level declarations
 	for p.cur().kind != .eof {
-		if p.cur().kind == .kw_struct {
-			prog.structs << p.parse_struct_decl()!
-		} else {
-			prog.fns << p.parse_fn()!
+		match p.cur().kind {
+			.kw_struct { prog.structs << p.parse_struct_decl()! }
+			.kw_enum { prog.enums << p.parse_enum_decl()! }
+			.kw_fn { prog.fns << p.parse_fn()! }
+			else { return error('unexpected token "${p.cur().lit}" at line ${p.cur().line}') }
 		}
 	}
 	if prog.fns.len == 0 {
@@ -213,6 +237,38 @@ fn (mut p Parser) parse_struct_decl() !StructDecl {
 	}
 	p.expect(.rbrace, "'}'")!
 	return StructDecl{ name: name.lit, fields: fields, line: t.line }
+}
+
+// parse_import parses `import "path/to/file.vr"`.
+fn (mut p Parser) parse_import() !ImportDecl {
+	t := p.expect(.kw_import, "'import'")!
+	path := p.expect(.str_lit, 'import path')!
+	return ImportDecl{ path: path.lit, line: t.line }
+}
+
+// parse_enum_decl parses `enum Name { variant1 variant2 ... }`.
+// Variants are separated by commas or newlines.
+fn (mut p Parser) parse_enum_decl() !EnumDecl {
+	t := p.expect(.kw_enum, "'enum'")!
+	name := p.expect(.ident, 'enum name')!
+	p.expect(.lbrace, "'{'")!
+	mut variants := []string{}
+	if p.cur().kind != .rbrace {
+		for {
+			variants << p.expect(.ident, 'variant name')!.lit
+			if p.cur().kind == .comma {
+				p.advance()
+				continue
+			}
+			if p.cur().kind != .rbrace {
+				// expect another variant (newline-separated)
+				continue
+			}
+			break
+		}
+	}
+	p.expect(.rbrace, "'}'")!
+	return EnumDecl{ name: name.lit, variants: variants, line: t.line }
 }
 
 // parse_fn parses `fn name(params) { }` or a method `fn (p Type) name(params) { }`.

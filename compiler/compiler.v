@@ -87,6 +87,8 @@ mut:
 	locals    map[string]int
 	types     map[string]string // local name -> declared struct type ('' = unknown)
 	structs   map[string][]string // declared struct name -> field list
+	enums     map[string][]string // enum name -> variant list
+	enum_vals map[string]int      // 'Enum.variant' -> integer value
 	local_cnt int
 	argc      int
 	cur_fn    string
@@ -99,11 +101,40 @@ mut:
 
 fn gen(prog Program) !obj.Obj {
 	mut g := Gen{}
+	// register enums first so their values are available everywhere
+	for ed in prog.enums {
+		if ed.name in g.enums {
+			return error('duplicate enum declaration "${ed.name}"')
+		}
+		g.enums[ed.name] = ed.variants
+		for i, v in ed.variants {
+			g.enum_vals['${ed.name}.${v}'] = i
+		}
+	}
+	// register struct declarations
 	for sd in prog.structs {
 		if sd.name in g.structs {
 			return error('duplicate struct declaration "${sd.name}"')
 		}
 		g.structs[sd.name] = sd.fields
+	}
+	// compile imported files and merge their objects
+	for imp in prog.imports {
+		imported := compile_file(imp.path)!
+		// merge symbols from the imported object
+		for s in imported.symbols {
+			g.symbols << s
+		}
+		// merge strings
+		for s in imported.strings {
+			g.strings << s
+		}
+		// append imported bytecode and adjust relocations
+		code_off := g.code.len
+		g.code << imported.code
+		for r in imported.relocs {
+			g.relocs << obj.Reloc{ offset: u32(code_off) + r.offset, name: r.name, kind: r.kind }
+		}
 	}
 	for fd in prog.fns {
 		g.gen_fn(fd)!
@@ -451,6 +482,15 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.code << obj.encode_i64(i64(e.fields.len))
 		}
 		.field {
+			// check if it's an enum variant (e.g., Color.red)
+			if e.left.kind == .ident {
+				key := '${e.left.name}.${e.name}'
+				if key in g.enum_vals {
+					g.code << op_push_i
+					g.code << obj.encode_i64(i64(g.enum_vals[key]))
+					return
+				}
+			}
 			g.gen_expr(*e.left)!
 			g.emit_field_name(e.name)
 			g.code << op_sget
@@ -477,11 +517,17 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.code << obj.encode_i64(e.int_v)
 		}
 		.ident {
-			idx := g.locals[e.name] or {
-				return error('unknown variable "${e.name}" at line ${e.line}')
+			// check if it's an enum variant (e.g., Color.red)
+			if e.name in g.enum_vals {
+				g.code << op_push_i
+				g.code << obj.encode_i64(i64(g.enum_vals[e.name]))
+			} else {
+				idx := g.locals[e.name] or {
+					return error('unknown variable "${e.name}" at line ${e.line}')
+				}
+				g.code << op_load
+				g.code << obj.encode_i64(i64(idx))
 			}
-			g.code << op_load
-			g.code << obj.encode_i64(i64(idx))
 		}
 		.unary {
 			g.gen_expr(*e.right)!
@@ -606,14 +652,22 @@ fn (mut g Gen) gen_binary(e Expr) ! {
 }
 
 // expr_type returns the declared struct type of an expression when it is
-// statically knowable: a typed literal `Point{...}` or a copy of a typed
-// variable. Everything else has no known type ('').
+// statically knowable: a typed literal `Point{...}`, a copy of a typed
+// variable, or an enum variant `Enum.variant`. Everything else has no
+// known type ('').
 fn (mut g Gen) expr_type(e Expr) string {
 	if e.kind == .struct_lit {
 		return e.name
 	}
 	if e.kind == .ident {
 		return g.types[e.name] or { '' }
+	}
+	// enum variant: Color.red  →  type is "Color"
+	if e.kind == .field && e.left.kind == .ident {
+		key := '${e.left.name}.${e.name}'
+		if key in g.enum_vals {
+			return e.left.name
+		}
 	}
 	return ''
 }
