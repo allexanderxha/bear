@@ -430,7 +430,7 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			// file, where the same validation applies)
 			if e.name.len > 0 && e.name in g.structs {
 				decl_fields := g.structs[e.name]
-				seen := map[string]bool{}
+				mut seen := map[string]bool{}
 				for f in e.fields {
 					if f.name !in decl_fields {
 						return error('unknown field "${f.name}" for struct ${e.name} (line ${e.line})')

@@ -514,7 +514,7 @@ fn (mut v Vm) is_struct(x i64) bool {
 }
 
 fn (mut v Vm) enc_int(x i64) i64 {
-	return x << 2
+	return u64(x) << 2
 }
 
 fn (mut v Vm) dec_int(x i64) i64 {
@@ -526,15 +526,15 @@ fn (mut v Vm) hand(x i64) int {
 }
 
 fn (mut v Vm) mkstr(idx int) i64 {
-	return (i64(idx) << 2) | 1
+	return (u64(idx) << 2) | 1
 }
 
 fn (mut v Vm) mkarr(idx int) i64 {
-	return (i64(idx) << 2) | 3
+	return (u64(idx) << 2) | 3
 }
 
 fn (mut v Vm) mkstruct_handle(idx int) i64 {
-	return (i64(idx) << 2) | 2
+	return (u64(idx) << 2) | 2
 }
 
 fn (mut v Vm) truthy(x i64) bool {
