@@ -260,6 +260,16 @@ fn main() {
 - bitwise operators: `& | ^ ~ << >>`
 - host builtins: `read_file` / `write_file`, `args()`, `getenv` / `setenv`,
   `exit`, `sleep`, `time()`, `type(x)`, `str(x)`, `int(x)`, `split` / `join`
+- JSON: `json_encode(x)` / `json_decode(s)` — objects become structs, arrays
+  become arrays, integral numbers decode as ints, `null` decodes to `none`
+- `none`: a literal for "no value" (JSON null); `x == none` compares,
+  and it renders as `none` / encodes as `null`
+- string formatting: `format(x, "%.2f")` (printf-style: `%d %i %f %s %x %X`,
+  width, `-`/`0` flags, precision), `replace`, `split_lines`, `pad` /
+  `pad_left`, `repeat` — all also available as string methods (`s.replace()`,
+  `s.pad(4)`, ...)
+- native builtin errors (failed `read_file`, `json_decode`, ...) are caught by
+  `try { } catch e { }` like explicit `throw`s
 - for loops: `for x in arr { }` and ranges `for i in 0..10 { }` /
   `for i in 0...10 { }`; loop variables are scoped to the loop body
 - `break` / `continue` inside `while` and `for` loops (in `for` loops
@@ -351,5 +361,5 @@ vm/native.v          host builtins incl. the build_* (.vrmm) builtins
 v.mod                module definition
 compiler/ assembler/ linker/ vm/ obj/   the toolchain itself
 bin/                 built binary + standalone tools
-examples/            runnable examples (hello, lib, asm, tests, fib)
+examples/            runnable examples (hello, lib, asm, tests, fib, json)
 ```

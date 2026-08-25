@@ -55,6 +55,7 @@ pub enum TokKind {
 	kw_return
 	kw_true
 	kw_false
+	kw_none
 	kw_and
 	kw_or
 	kw_not

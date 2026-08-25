@@ -18,6 +18,7 @@ enum CType {
 	float_t
 	string_t
 	bool_t
+	none_t
 	array_t
 	struct_t
 	enum_t
@@ -221,7 +222,7 @@ fn (mut c Checker) check_stmt(st Stmt) ! {
 		.for_in_stmt {
 			seq := c.check_expr(st.expr)!
 			// iterate enums and arrays; unknown is allowed (dynamic)
-			if seq.kind == .int_t || seq.kind == .float_t || seq.kind == .bool_t {
+			if seq.kind == .int_t || seq.kind == .float_t || seq.kind == .bool_t || seq.kind == .none_t {
 				return error('cannot iterate a ${type_name(seq.kind)} (line ${st.line})')
 			}
 			c.types[st.target] = TypeInfo{ kind: .unknown }
@@ -271,6 +272,7 @@ fn (mut c Checker) check_expr(e Expr) !TypeInfo {
 		.float_lit { TypeInfo{ kind: .float_t } }
 		.str_lit { TypeInfo{ kind: .string_t } }
 		.bool_lit { TypeInfo{ kind: .bool_t } }
+		.none_lit { TypeInfo{ kind: .none_t } }
 		.ident {
 			if e.name in c.types {
 				c.types[e.name]
@@ -324,7 +326,7 @@ fn (mut c Checker) check_expr(e Expr) !TypeInfo {
 		}
 		.method_call {
 			recv := c.check_expr(*e.left)!
-			if recv.kind == .int_t || recv.kind == .float_t || recv.kind == .bool_t {
+			if recv.kind == .int_t || recv.kind == .float_t || recv.kind == .bool_t || recv.kind == .none_t {
 				return error('cannot call a method on a ${type_name(recv.kind)} (line ${e.line})')
 			}
 			for a in e.args {
@@ -336,7 +338,7 @@ fn (mut c Checker) check_expr(e Expr) !TypeInfo {
 			base := c.check_expr(*e.left)!
 			_ = c.check_expr(*e.right)!
 			_ = c.check_expr(*e.extra)!
-			if base.kind == .int_t || base.kind == .float_t || base.kind == .bool_t {
+			if base.kind == .int_t || base.kind == .float_t || base.kind == .bool_t || base.kind == .none_t {
 				return error('cannot slice a ${type_name(base.kind)} (line ${e.line})')
 			}
 			if base.kind == .string_t {
@@ -424,6 +426,9 @@ fn (mut c Checker) check_binary(e Expr) !TypeInfo {
 			if l.kind == .bool_t && r.kind == .bool_t {
 				return error('cannot order booleans (line ${e.line})')
 			}
+			if l.kind == .none_t || r.kind == .none_t {
+				return error('cannot order a none (line ${e.line})')
+			}
 			if l.kind != .unknown && r.kind != .unknown && l.kind != r.kind && !(is_num_kind(l.kind) && is_num_kind(r.kind)) {
 				return error('cannot compare a ${type_name(l.kind)} and a ${type_name(r.kind)} (line ${e.line})')
 			}
@@ -450,7 +455,7 @@ fn (mut c Checker) check_call(e Expr) !TypeInfo {
 			return error('len() takes exactly one argument (line ${e.line})')
 		}
 		t := c.check_expr(e.args[0])!
-		if t.kind == .int_t || t.kind == .float_t || t.kind == .bool_t || t.kind == .closure_t {
+		if t.kind == .int_t || t.kind == .float_t || t.kind == .bool_t || t.kind == .none_t || t.kind == .closure_t {
 			return error('len() on a ${type_name(t.kind)} (line ${e.line})')
 		}
 		return TypeInfo{ kind: .int_t }
@@ -552,6 +557,9 @@ fn builtin_result_type(name string) TypeInfo {
 		'args', 'keys' { TypeInfo{ kind: .array_t } }
 		'len' { TypeInfo{ kind: .int_t } }
 		'write_file', 'setenv', 'exit', 'sleep', 'eprint' { TypeInfo{ kind: .unknown } }
+		// stdlib: JSON + string formatting
+		'json_encode', 'format', 'replace', 'pad', 'pad_left', 'repeat' { TypeInfo{ kind: .string_t } }
+		'json_decode', 'split_lines' { TypeInfo{ kind: .unknown } }
 		// build-module builtins (.vrmm)
 		'build_compile', 'build_assemble', 'build_link', 'build_exec', 'build_base',
 		'build_dir', 'build_join', 'build_root' { TypeInfo{ kind: .string_t } }
@@ -576,30 +584,31 @@ fn type_name(k CType) string {
 		.struct_t { 'struct' }
 		.enum_t { 'enum' }
 		.closure_t { 'function' }
+		.none_t { 'none' }
 		else { 'value' }
 	}
 }
 
 fn (mut c Checker) expect_numeric(t TypeInfo, what string, line int) ! {
-	if t.kind == .string_t || t.kind == .array_t || t.kind == .struct_t || t.kind == .bool_t || t.kind == .closure_t {
+	if t.kind == .string_t || t.kind == .array_t || t.kind == .struct_t || t.kind == .bool_t || t.kind == .none_t || t.kind == .closure_t {
 		return error('${what} on a ${type_name(t.kind)} (line ${line})')
 	}
 }
 
 fn (mut c Checker) expect_int(t TypeInfo, what string, line int) ! {
-	if t.kind == .string_t || t.kind == .array_t || t.kind == .struct_t || t.kind == .bool_t || t.kind == .closure_t || t.kind == .float_t {
+	if t.kind == .string_t || t.kind == .array_t || t.kind == .struct_t || t.kind == .bool_t || t.kind == .none_t || t.kind == .closure_t || t.kind == .float_t {
 		return error('${what} requires an int, got a ${type_name(t.kind)} (line ${line})')
 	}
 }
 
 fn (mut c Checker) expect_container(t TypeInfo, what string, line int) ! {
-	if t.kind == .int_t || t.kind == .float_t || t.kind == .bool_t || t.kind == .closure_t {
+	if t.kind == .int_t || t.kind == .float_t || t.kind == .bool_t || t.kind == .none_t || t.kind == .closure_t {
 		return error('${what} on a ${type_name(t.kind)} (line ${line})')
 	}
 }
 
 fn (mut c Checker) expect_struct_like(t TypeInfo, what string, line int) ! {
-	if t.kind == .int_t || t.kind == .float_t || t.kind == .bool_t || t.kind == .string_t || t.kind == .closure_t {
+	if t.kind == .int_t || t.kind == .float_t || t.kind == .bool_t || t.kind == .string_t || t.kind == .none_t || t.kind == .closure_t {
 		return error('${what} on a ${type_name(t.kind)} (line ${line})')
 	}
 }

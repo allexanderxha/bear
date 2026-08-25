@@ -443,7 +443,20 @@ fn (mut v Vm) exec() ! {
 				v.ip++
 				id := int(v.read_i64())
 				argc := int(v.read_i64())
-				v.native(id, argc)!
+				v.native(id, argc) or {
+					// a failed builtin becomes a VM-level throw, so try/catch can
+					// intercept it exactly like an explicit `throw`; with no
+					// handler it keeps propagating to the caller
+					if v.handlers.len == 0 {
+						return err
+					}
+					h := v.handlers[v.handlers.len - 1]
+					v.handlers.delete_last()
+					v.bp = h.bp
+					v.sp = h.sp
+					v.push(v.alloc_str(err.msg()))!
+					v.ip = h.ip
+				}
 			}
 			op_and_b {
 				v.ip++
@@ -568,6 +581,10 @@ fn (mut v Vm) exec() ! {
 				sidx := int(v.read_i64())
 				argc := int(v.read_i64())
 				v.str_method(v.strings[sidx], argc)!
+			}
+			op_push_none {
+				v.ip++
+				v.push(none_val)!
 			}
 			else {
 				return error('unknown opcode ${op} at ip ${v.ip}')

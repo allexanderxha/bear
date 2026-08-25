@@ -291,6 +291,7 @@ fn (mut l Lexer) lex_ident(line int, col int) Tok {
 		'return' { TokKind.kw_return }
 		'true' { TokKind.kw_true }
 		'false' { TokKind.kw_false }
+		'none' { TokKind.kw_none }
 		'and' { TokKind.kw_and }
 		'or' { TokKind.kw_or }
 		'not' { TokKind.kw_not }

@@ -787,6 +787,10 @@ fn (mut p Parser) parse_primary() !Expr {
 			p.advance()
 			return Expr{ kind: .bool_lit, int_v: 0, line: t.line }
 		}
+		.kw_none {
+			p.advance()
+			return Expr{ kind: .none_lit, line: t.line }
+		}
 		.lparen {
 			p.advance()
 			e := p.parse_expr()!

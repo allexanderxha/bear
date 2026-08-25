@@ -723,6 +723,9 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.code << op_push_i
 			g.code << obj.encode_i64(e.int_v)
 		}
+		.none_lit {
+			g.code << op_push_none
+		}
 		.ident {
 			// check if it's a constant
 			if e.name in g.consts {
@@ -923,6 +926,15 @@ fn builtin_spec(name string) (int, int) {
 		'build_dir' { native_build_dir, 1 }
 		'build_join' { native_build_join, 2 }
 		'build_root' { native_build_root, 0 }
+		// stdlib: JSON + string formatting
+		'json_encode' { native_json_encode, 1 }
+		'json_decode' { native_json_decode, 1 }
+		'format' { native_format, 2 }
+		'replace' { native_replace, 3 }
+		'split_lines' { native_split_lines, 1 }
+		'pad' { native_pad, 2 }
+		'pad_left' { native_pad_left, 2 }
+		'repeat' { native_repeat, 2 }
 		else { -1, 0 }
 	}
 }
@@ -1153,6 +1165,7 @@ fn (mut g Gen) expr_type(e Expr) string {
 			'upper', 'lower', 'trim', 'str', 'getenv', 'read_file', 'join' { 'string' }
 			'build_compile', 'build_assemble', 'build_link', 'build_exec', 'build_base',
 			'build_dir', 'build_join', 'build_root' { 'string' }
+			'json_encode', 'format', 'replace', 'pad', 'pad_left', 'repeat' { 'string' }
 			else { '' }
 		}
 	}

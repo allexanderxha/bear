@@ -11,6 +11,9 @@ fn (mut v Vm) val_str(x i64, depth int) string {
 	if depth > 16 {
 		return '...'
 	}
+	if v.is_none(x) {
+		return 'none'
+	}
 	if v.is_str(x) && v.valid_handle(x) {
 		return v.strings[v.hand(x)]
 	}
@@ -117,6 +120,7 @@ fn (mut v Vm) trace_op(op u8) {
 		op_load_dyn { 'load_dyn' }
 		op_varargs { 'varargs' }
 		op_str_method { 'str_method' }
+		op_push_none { 'push_none' }
 		else { '??' }
 	}
 	mut s := ''

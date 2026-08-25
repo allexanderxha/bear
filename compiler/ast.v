@@ -6,6 +6,7 @@ pub enum ExprKind {
 	float_lit
 	str_lit
 	bool_lit
+	none_lit
 	ident
 	array_lit
 	struct_lit

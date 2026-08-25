@@ -581,10 +581,185 @@ fn (mut v Vm) native(id int, _argc int) ! {
 		native_build_root {
 			v.push(v.alloc_str(v.build_root))!
 		}
+		// -------------------------------------------------------------------
+		// stdlib: JSON + string formatting
+		native_json_encode {
+			x := v.pop()!
+			s := v.json_encode_value(x, 0) or { return error('json_encode: ${err.msg()}') }
+			v.push(v.alloc_str(s))!
+		}
+		native_json_decode {
+			s := v.pop_str()!
+			val := v.json_parse(s) or { return error('json_decode: ${err.msg()}') }
+			v.push(val)!
+		}
+		native_format {
+			spec := v.pop_str()!
+			x := v.pop()!
+			s := v.format_value(x, spec) or { return error('format: ${err.msg()}') }
+			v.push(v.alloc_str(s))!
+		}
+		native_replace {
+			to := v.pop_str()!
+			from := v.pop_str()!
+			s := v.pop_str()!
+			v.push(v.alloc_str(s.replace(from, to)))!
+		}
+		native_split_lines {
+			s := v.pop_str()!
+			mut arr := []i64{}
+			for ln in s.split_into_lines() {
+				v.strings << ln
+				arr << v.mkstr(v.strings.len - 1)
+			}
+			v.arrays << arr
+			v.push(v.mkarr(v.arrays.len - 1))!
+		}
+		native_pad {
+			width := int(v.dec_int(v.pop()!))
+			s := v.pop_str()!
+			n := s.runes().len
+			v.push(v.alloc_str(if n < width { s + ' '.repeat(width - n) } else { s }))!
+		}
+		native_pad_left {
+			width := int(v.dec_int(v.pop()!))
+			s := v.pop_str()!
+			n := s.runes().len
+			v.push(v.alloc_str(if n < width { ' '.repeat(width - n) + s } else { s }))!
+		}
+		native_repeat {
+			n := int(v.dec_int(v.pop()!))
+			s := v.pop_str()!
+			if n < 0 {
+				return error('repeat() expects a non-negative count')
+			}
+			v.push(v.alloc_str(s.repeat(n)))!
+		}
 		else {
 			return error('unknown native builtin ${id}')
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// format() — a small printf-style formatter: %d %i %f %s %x %X %% with
+// optional width, left-align (-), zero-padding (0), and precision (.N).
+fn (mut v Vm) format_value(x i64, spec string) !string {
+	if spec.len < 2 || spec[0] != `%` {
+		return error('expected a printf-style spec like "%d" or "%.2f", got "${spec}"')
+	}
+	mut i := 1
+	mut left := false
+	mut zero := false
+	if i < spec.len && spec[i] == `-` {
+		left = true
+		i++
+	}
+	if i < spec.len && spec[i] == `0` {
+		zero = true
+		i++
+	}
+	mut width := 0
+	for i < spec.len && spec[i] >= `0` && spec[i] <= `9` {
+		width = width * 10 + int(spec[i] - `0`)
+		i++
+	}
+	mut prec := -1
+	if i < spec.len && spec[i] == `.` {
+		i++
+		prec = 0
+		for i < spec.len && spec[i] >= `0` && spec[i] <= `9` {
+			prec = prec * 10 + int(spec[i] - `0`)
+			i++
+		}
+	}
+	if i >= spec.len {
+		return error('incomplete format spec "${spec}"')
+	}
+	conv := spec[i]
+	mut core := ''
+	match conv {
+		`d`, `i` {
+			num := if v.is_float(x) { i64(v.fval(x)) } else { v.dec_int(x) }
+			core = num.str()
+		}
+		`f` {
+			f := if v.is_float(x) { v.fval(x) } else { f64(v.dec_int(x)) }
+			core = v.format_fixed(f, if prec < 0 { 6 } else { prec })
+		}
+		`s` {
+			core = v.val_str(x, 0)
+			if prec >= 0 && core.len > prec {
+				core = core[..prec]
+			}
+		}
+		`x` {
+			core = u64(v.dec_int(x)).hex()
+		}
+		`X` {
+			core = u64(v.dec_int(x)).hex().to_upper()
+		}
+		`%` {
+			return '%'
+		}
+		else {
+			return error('unsupported conversion "%${conv.ascii_str()}" (supported: %d %i %f %s %x %X %%)')
+		}
+	}
+	if core.len < width {
+		n := width - core.len
+		if left {
+			core += ' '.repeat(n)
+		} else if zero && core.starts_with('-') {
+			core = '-' + '0'.repeat(n) + core[1..]
+		} else if zero {
+			core = '0'.repeat(n) + core
+		} else {
+			core = ' '.repeat(n) + core
+		}
+	}
+	return core
+}
+
+// format_fixed renders an f64 in fixed-point notation with `prec` decimals
+// (rounding), the way printf's %f does.
+fn (mut v Vm) format_fixed(f f64, prec int) string {
+	mut p := prec
+	if p < 0 {
+		p = 0
+	}
+	if p > 20 {
+		p = 20
+	}
+	if math.is_nan(f) {
+		return 'NaN'
+	}
+	if math.is_inf(f, 1) {
+		return 'Inf'
+	}
+	if math.is_inf(f, -1) {
+		return '-Inf'
+	}
+	neg := f < 0.0
+	af := math.abs(f)
+	// beyond ~15 digits a float no longer carries exact decimal places, so
+	// fall back to the friendliest available rendering
+	if af >= 1e15 {
+		return fmt_float(f)
+	}
+	scale := math.pow(10.0, f64(p))
+	r := math.round(af * scale)
+	i := i64(r / scale)
+	core := i.str()
+	if p == 0 {
+		return if neg { '-' + core } else { core }
+	}
+	d := i64(math.round(math.fmod(r, scale)))
+	mut ds := d.str()
+	if ds.len < p {
+		ds = '0'.repeat(p - ds.len) + ds
+	}
+	return (if neg { '-' } else { '' }) + core + '.' + ds
 }
 
 // copy_tree recursively copies a directory tree (used by build_copy).
@@ -645,6 +820,11 @@ fn (mut v Vm) str_method(name string, argc int) ! {
 		'index_of' { native_index_of }
 		'to_int' { native_int }
 		'to_float' { native_float }
+		'replace' { native_replace }
+		'split_lines' { native_split_lines }
+		'pad' { native_pad }
+		'pad_left' { native_pad_left }
+		'repeat' { native_repeat }
 		else { -1 }
 	}
 	if bid >= 0 {

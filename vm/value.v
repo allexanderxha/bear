@@ -16,6 +16,12 @@ const tag_arr = u64(3)
 const tag_float = u64(4)
 const tag_closure = u64(5)
 
+// none_val is the sentinel for the `none` literal (and JSON null). Tag 110
+// is not a valid encoded integer (those are multiples of 8) nor any handle,
+// so it can never collide with a real value. The GC ignores it (its tag
+// matches no heap pool).
+const none_val = i64(6)
+
 fn (mut v Vm) tag(x i64) u64 {
 	return u64(x) & tag_mask
 }
@@ -42,6 +48,10 @@ fn (mut v Vm) is_float(x i64) bool {
 
 fn (mut v Vm) is_closure(x i64) bool {
 	return u64(x) & tag_mask == tag_closure
+}
+
+fn (mut v Vm) is_none(x i64) bool {
+	return x == none_val
 }
 
 // is_num reports whether x is an integer (tag 0). Floats are a distinct type.
@@ -93,6 +103,9 @@ fn (mut v Vm) fval(x i64) f64 {
 }
 
 fn (mut v Vm) truthy(x i64) bool {
+	if v.is_none(x) {
+		return false
+	}
 	if v.is_float(x) {
 		return v.fval(x) != 0.0
 	}

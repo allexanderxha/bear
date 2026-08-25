@@ -65,6 +65,7 @@ const op_argc = u8(58) // push the current frame's arg count
 const op_load_dyn = u8(59) // pop idx, push stack[bp + idx]
 const op_varargs = u8(60) // <named:i64> <dst:i64> — collect args[named..argc-1] into array at local dst
 const op_str_method = u8(61) // <name:str> <argc:i64> — call a string method (s.len(), s.contains(x), ...)
+const op_push_none = u8(62) // push the `none` sentinel
 
 // native builtin ids (the operand to op_native)
 const native_abs = 100
@@ -126,3 +127,13 @@ const native_build_base = 153
 const native_build_dir = 154
 const native_build_join = 155
 const native_build_root = 156
+
+// stdlib builtins (JSON + string formatting)
+const native_json_encode = 157
+const native_json_decode = 158
+const native_format = 159
+const native_replace = 160
+const native_split_lines = 161
+const native_pad = 162
+const native_pad_left = 163
+const native_repeat = 164

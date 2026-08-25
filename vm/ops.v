@@ -4,6 +4,9 @@ module vm
 import math
 
 fn (mut v Vm) add(a i64, b i64) !i64 {
+	if v.is_none(a) || v.is_none(b) {
+		return error('cannot use none with +')
+	}
 	if v.is_arr(a) || v.is_arr(b) {
 		return error('cannot add arrays with +')
 	}
@@ -75,6 +78,9 @@ fn fmt_float(f f64) string {
 }
 
 fn (mut v Vm) arith(a i64, b i64, op string) !i64 {
+	if v.is_none(a) || v.is_none(b) {
+		return error('cannot use none with "${op}"')
+	}
 	if v.is_str(a) || v.is_str(b) {
 		return error('cannot use strings with "${op}"')
 	}
@@ -139,6 +145,16 @@ fn (mut v Vm) arith(a i64, b i64, op string) !i64 {
 }
 
 fn (mut v Vm) cmp(a i64, b i64, op string) !i64 {
+	if v.is_none(a) || v.is_none(b) {
+		// none equals only none; ordering a none is an error
+		if op == '==' {
+			return bool_i64(v.is_none(a) && v.is_none(b))
+		}
+		if op == '!=' {
+			return bool_i64(!(v.is_none(a) && v.is_none(b)))
+		}
+		return error('cannot order none')
+	}
 	if v.is_arr(a) || v.is_arr(b) {
 		// arrays compare by identity (handle equality) with ==/!=
 		if op == '==' || op == '!=' {

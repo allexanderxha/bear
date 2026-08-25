@@ -226,6 +226,87 @@ fn test_structs() {
 	assert a != c
 }
 
+fn test_json() {
+	// encoding
+	assert json_encode(42) == "42"
+	assert json_encode(3.14) == "3.14"
+	assert json_encode(1.0) == "1"
+	assert json_encode("hi") == "\"hi\""
+	assert json_encode([1, "two", 3.5]) == "[1,\"two\",3.5]"
+	let rec = { name: "amy", age: 30 }
+	assert json_encode(rec) == "{\"name\":\"amy\",\"age\":30}"
+	assert json_encode(none) == "null"
+
+	// decoding
+	assert json_decode("42") == 42
+	assert json_decode("3.14") == 3.14
+	assert json_decode("\"hi\"") == "hi"
+	assert json_decode("true") == 1
+	assert json_decode("null") == none
+	let obj = json_decode("{\"x\": 1, \"y\": [1, 2], \"z\": {\"deep\": true}}")
+	assert obj.x == 1
+	assert obj.y[1] == 2
+	assert obj.z.deep == 1
+
+	// round-trip
+	assert json_encode(json_decode("{\"a\": 1, \"b\": [2, 3]}")) == "{\"a\":1,\"b\":[2,3]}"
+
+	// unicode escapes
+	assert json_decode("\"\\u0041\"") == "A"
+	assert json_decode("\"\\ud83d\\ude00\"") == "😀"
+}
+
+fn test_format() {
+	assert format(42, "%d") == "42"
+	assert format(42, "%05d") == "00042"
+	assert format(-42, "%05d") == "-0042"
+	assert format(42, "%-5d") == "42   "
+	assert format(3.14159, "%.2f") == "3.14"
+	assert format(3.0, "%.2f") == "3.00"
+	assert format(255, "%X") == "FF"
+	assert format("hi", "%s") == "hi"
+	assert format(7, "%5d") == "    7"
+}
+
+fn test_string_tools() {
+	assert replace("hello world", "l", "L") == "heLLo worLd"
+	assert "hello world".replace("o", "0") == "hell0 w0rld"
+	assert len(split_lines("a\nb\nc")) == 3
+	assert "a\nb".split_lines()[1] == "b"
+	assert pad("x", 4) == "x   "
+	assert "x".pad(4) == "x   "
+	assert pad_left("x", 4) == "   x"
+	assert "x".pad_left(4) == "   x"
+	assert repeat("ab", 3) == "ababab"
+	assert "ab".repeat(2) == "abab"
+	assert pad("toolong", 2) == "toolong"
+}
+
+fn test_none() {
+	assert none == none
+	assert none == 0 == false
+	assert none != 5
+	if none {
+		assert false
+	}
+	assert not (none == 1)
+}
+
+fn test_native_errors_are_catchable() {
+	try {
+		read_file("/no/such/file.vr")
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+	try {
+		json_decode("not json")
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+}
+
 fn test_failing() {
 	// this one is meant to fail — shows up in `vr test` output
 	assert 1 == 2
