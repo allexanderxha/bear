@@ -1,0 +1,17 @@
+// lib.vr — a small library compiled to its own object file.
+//   vr compile examples/lib.vr -o /tmp/lib.vobj
+
+fn double(n) {
+	return n * 2
+}
+
+fn square(n) {
+	return n * n
+}
+
+fn describe(n) {
+	if n > 100 {
+		return "big"
+	}
+	return "small"
+}

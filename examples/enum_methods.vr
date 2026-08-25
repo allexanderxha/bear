@@ -1,0 +1,86 @@
+// enum_methods.vr — demonstrates methods defined on enum types
+
+enum Color {
+	red
+	green
+	blue
+}
+
+enum Direction {
+	north
+	south
+	east
+	west
+}
+
+// method on Color enum
+fn (c Color) name() {
+	match c {
+		Color.red { return "red" }
+		Color.green { return "green" }
+		Color.blue { return "blue" }
+		else { return "unknown" }
+	}
+}
+
+// method on Color enum
+fn (c Color) is_primary() {
+	if c == Color.red or c == Color.green or c == Color.blue {
+		return 1
+	}
+	return 0
+}
+
+// method on Direction enum
+fn (d Direction) opposite() {
+	match d {
+		Direction.north { return Direction.south }
+		Direction.south { return Direction.north }
+		Direction.east { return Direction.west }
+		Direction.west { return Direction.east }
+		else { return d }
+	}
+}
+
+// method on Direction enum
+fn (d Direction) is_horizontal() {
+	if d == Direction.east or d == Direction.west {
+		return 1
+	}
+	return 0
+}
+
+fn main() {
+	// test Color methods
+	let c = Color.red
+	let nm = c.name()
+	assert nm == "red"
+	println("Color.name() = red")
+	
+	let primary = c.is_primary()
+	assert primary == 1
+	println("Color.is_primary() = 1")
+	
+	// test Direction methods
+	let dir = Direction.north
+	let opp = dir.opposite()
+	assert opp == Direction.south
+	println("Direction.north.opposite() = south")
+	
+	let horizontal = dir.is_horizontal()
+	assert horizontal == 0
+	println("Direction.north.is_horizontal() = 0")
+	
+	// test with other values
+	let blue = Color.blue
+	assert blue.name() == "blue"
+	assert blue.is_primary() == 1
+	println("Color.blue methods OK")
+	
+	let east = Direction.east
+	assert east.opposite() == Direction.west
+	assert east.is_horizontal() == 1
+	println("Direction.east methods OK")
+	
+	println("All enum method assertions passed!")
+}

@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install V
+        run: |
+          git clone --depth 1 https://github.com/vlang/v /tmp/v
+          cd /tmp/v && make
+          sudo ln -sf /tmp/v/v /usr/local/bin/v
+          v version
+
+      - name: Build toolchain
+        run: v -o bin/vr .
+
+      - name: Smoke test — compile and run hello.vr
+        run: ./bin/vr run examples/hello.vr
+
+      - name: Smoke test — compile and run fib.vr
+        run: ./bin/vr run examples/fib.vr
+
+      - name: Smoke test — compile and run structs.vr
+        run: ./bin/vr run examples/structs.vr
+
+      - name: Smoke test — compile and run match.vr
+        run: ./bin/vr run examples/match.vr
+
+      - name: Smoke test — compile and run arrays.vr
+        run: ./bin/vr run examples/arrays.vr
+
+      - name: Smoke test — assemble, link, and run math.vasm
+        run: |
+          ./bin/vr assemble examples/math.vasm -o /tmp/math.vobj
+          ./bin/vr link /tmp/math.vobj -o /tmp/math.vbin
+          ./bin/vr run /tmp/math.vbin
+
+      - name: Smoke test — multi-file compile + link
+        run: |
+          ./bin/vr compile examples/lib.vr -o /tmp/lib.vobj
+          ./bin/vr compile examples/use_lib.vr -o /tmp/use_lib.vobj
+          ./bin/vr link /tmp/lib.vobj /tmp/use_lib.vobj -o /tmp/use_lib.vbin
+          ./bin/vr run /tmp/use_lib.vbin
+
+      - name: Run test suite
+        # test_failing is intentionally skipped — it asserts 1 == 2 on purpose.
+        # The test runner exits 1 if any test_* fails, so we run every .vr file
+        # that does NOT contain a test_failing function.  examples/tests.vr has
+        # test_failing, so we compile a clean copy without it.
+        run: |
+          grep -n 'fn test_failing' examples/tests.vr || true
+          sed '/fn test_failing/,/^}/d' examples/tests.vr > /tmp/ci_tests.vr
+          ./bin/vr test /tmp/ci_tests.vr

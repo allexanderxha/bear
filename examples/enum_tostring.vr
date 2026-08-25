@@ -1,0 +1,50 @@
+// enum_tostring.vr — demonstrates built-in enum.to_string()
+
+enum Color {
+	red
+	green
+	blue
+}
+
+enum Day {
+	monday
+	tuesday
+	wednesday
+	thursday
+	friday
+	saturday
+	sunday
+}
+
+fn main() {
+	// Color.to_string()
+	let c = Color.red
+	println(c.to_string())
+	assert c.to_string() == "red"
+	
+	let g = Color.green
+	println(g.to_string())
+	assert g.to_string() == "green"
+	
+	let b = Color.blue
+	println(b.to_string())
+	assert b.to_string() == "blue"
+	
+	// Day.to_string()
+	let d = Day.friday
+	println(d.to_string())
+	assert d.to_string() == "friday"
+	
+	let sun = Day.sunday
+	println(sun.to_string())
+	assert sun.to_string() == "sunday"
+	
+	// enum variant literal .to_string()
+	println(Color.green.to_string())
+	assert Color.green.to_string() == "green"
+	
+	println(Day.monday.to_string())
+	assert Day.monday.to_string() == "monday"
+	
+	println("All to_string assertions passed!")
+}

@@ -1,0 +1,23 @@
+// use_lib.vr — calls functions defined in lib.vr; the two object files are
+// linked together by the linker:
+//   vr compile examples/lib.vr -o /tmp/lib.vobj
+//   vr compile examples/use_lib.vr -o /tmp/use_lib.vobj
+//   vr link /tmp/lib.vobj /tmp/use_lib.vobj -o /tmp/use_lib.vbin
+//   vr run /tmp/use_lib.vbin
+
+fn main() {
+	let d = double(21)
+	println("double(21) = ")
+	println(d)
+
+	let s = square(9)
+	println("square(9) = ")
+	println(s)
+
+	println("describe(500) = ")
+	println(describe(500))
+
+	assert double(21) == 42
+	assert square(9) == 81
+	println("cross-file calls ok")
+}

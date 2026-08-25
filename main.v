@@ -1,0 +1,487 @@
+// vuurraaf/v
+// A complete toolchain for VuurRaaf, in V. This toolchain is made from zero,
+// and includes a custom compiler, assembler, linker, and runtime.
+// It is designed to be simple and easy to understand, while still being powerful
+// enough to compile and run VuurRaaf programs.
+//
+//   vr run hello.vr          compile + link + run
+//   vr compile hello.vr      source -> object (.vobj)
+//   vr assemble math.vasm    assembly -> object (.vobj)
+//   vr link a.vobj b.vobj    objects -> executable (.vbin)
+//   vr debug hello.vr        run with an instruction trace
+//   vr test tests.vr         run every test_* function
+//   vr bench fib.vr 1000     benchmark main()
+//   vr help                  everything else
+
+module main
+
+import os
+import json2
+import time
+import obj
+import compiler
+import assembler
+import linker
+import vm
+
+const name = 'vuurraaf/v'
+const version = '0.1.0'
+const project_root = @VMODROOT
+
+fn main() {
+	args := os.args[1..]
+	if args.len == 0 {
+		toolchain_help()
+		return
+	}
+	cmd := args[0]
+	rest := args[1..]
+	match cmd {
+		'help', '-h', '--help' {
+			toolchain_help()
+		}
+		'version', '-v', '--version' {
+			toolchain_version()
+		}
+		'info' {
+			toolchain_info()
+		}
+		'config' {
+			toolchain_config(rest) or { die('config', err) }
+		}
+		'compile', 'c' {
+			toolchain_compile(rest) or { die('compile', err) }
+		}
+		'assemble', 'a' {
+			toolchain_assemble(rest) or { die('assemble', err) }
+		}
+		'link', 'l' {
+			toolchain_link(rest) or { die('link', err) }
+		}
+		'run', 'r' {
+			toolchain_run(rest) or { die('run', err) }
+		}
+		'debug', 'd' {
+			toolchain_debug(rest) or { die('debug', err) }
+		}
+		'test', 't' {
+			toolchain_test(rest) or { die('test', err) }
+		}
+		'bench', 'b' {
+			toolchain_bench(rest) or { die('bench', err) }
+		}
+		'clean' {
+			toolchain_clean()
+		}
+		'up' {
+			toolchain_up() or { die('up', err) }
+		}
+		'symlink' {
+			toolchain_symlink() or { die('symlink', err) }
+		}
+		'loader' {
+			toolchain_loader()
+		}
+		'alloc' {
+			toolchain_alloc()
+		}
+		'free' {
+			toolchain_free()
+		}
+		'unloader' {
+			toolchain_unloader()
+		}
+		else {
+			eprintln('vr: unknown command "${cmd}"')
+			eprintln("run 'vr help' for usage")
+			exit(1)
+		}
+	}
+}
+
+fn die(cmd string, err IError) {
+	eprintln('vr ${cmd}: ${err.msg()}')
+	exit(1)
+}
+
+// ---------------------------------------------------------------------------
+// commands
+
+fn toolchain_loader() {
+	components := [
+		'compiler  (lexer, parser, bytecode codegen)',
+		'assembler (vasm -> vobj)',
+		'linker    (vobj set -> vbin)',
+		'vm        (stack-based runtime)',
+		'obj       (VROBJ/VRBIN formats)',
+	]
+	println('VuurRaaf toolchain components:')
+	for c in components {
+		println('  [loaded]  ${c}')
+	}
+	println('')
+	println('all components are statically linked into this binary (${os.executable()})')
+}
+
+fn toolchain_unloader() {
+	println('unloader: nothing to unload — the toolchain is a single static binary')
+}
+
+fn toolchain_alloc() {
+	// the toolchain keeps one pre-sized arena for scratch work
+	arena := 1 * 1024 * 1024
+	vm_stack := 65536 * 8
+	println('toolchain memory arena:')
+	println('  byte arena:   ${arena} bytes (1 MiB, reserved)')
+	println('  vm stack:     ${vm_stack} bytes (64k slots x 8)')
+	println('  strings:      grow-on-demand heap inside the vm')
+}
+
+fn toolchain_free() {
+	println('free: no persistent allocations to release')
+}
+
+fn toolchain_help() {
+	println('VuurRaaf toolchain (vuurraaf/v) v${version}')
+	println('')
+	println('usage: vr <command> [args]')
+	println('')
+	println('  compile <file.vr> [-o out.vobj]          compile source to an object file')
+	println('  assemble <file.vasm> [-o out.vobj]       assemble raw bytecode to an object file')
+	println('  link <a.vobj> [more.vobj ...] [-o out]   link objects into an executable')
+	println('  run <file.vr|file.vbin>                  compile, link and run (or run a binary)')
+	println('  debug <file.vr|file.vbin>                run with an instruction trace')
+	println('  test <file.vr>                           run every test_* function')
+	println('  bench <file.vr> [iterations]             benchmark main()')
+	println('  clean                                    remove build artifacts')
+	println('  up                                       rebuild the vr binary into bin/')
+	println('  symlink                                  link bin/vr into your PATH')
+	println('  config [set <key> <value>]               show or change toolchain config')
+	println('  info                                     show toolchain information')
+	println('  loader                                   list toolchain components')
+	println('  alloc                                    show toolchain memory arena')
+	println('  free | unloader                          release toolchain resources')
+	println('  version                                  print version')
+	println('  help                                     this help')
+}
+
+fn toolchain_version() {
+	println('VuurRaaf toolchain v${version}')
+}
+
+fn toolchain_info() {
+	v_version := os.execute('v version').output.trim_space()
+	println('${name} v${version}')
+	println('  root:        ${project_root}')
+	println('  v compiler:  ${v_version}')
+	println('  platform:    ${os.user_os()}')
+	println('  components:  compiler, assembler, linker, vm, obj')
+	println('  config:      ${config_path()}')
+}
+
+// ---------------------------------------------------------------------------
+// config
+
+struct Config {
+mut:
+	outdir  string = '.'
+	verbose bool
+}
+
+fn config_path() string {
+	return os.join_path(os.home_dir(), '.config', 'vuurraaf', 'config.json')
+}
+
+fn load_config() Config {
+	p := config_path()
+	if !os.exists(p) {
+		return Config{}
+	}
+	text := os.read_file(p) or { return Config{} }
+	return json2.decode[Config](text) or { Config{} }
+}
+
+fn save_config(c Config) ! {
+	dir := os.dir(config_path())
+	os.mkdir_all(dir) or { return error('cannot create config dir: ${dir}') }
+	os.write_file(config_path(), json2.encode(c))!
+}
+
+fn toolchain_config(args []string) ! {
+	if args.len == 0 {
+		c := load_config()
+		println('config: ${config_path()}')
+		println('  outdir:  ${c.outdir}')
+		println('  verbose: ${c.verbose}')
+		return
+	}
+	if args[0] == 'set' && args.len == 3 {
+		mut c := load_config()
+		match args[1] {
+			'outdir' {
+				c.outdir = args[2]
+			}
+			'verbose' {
+				c.verbose = args[2] == 'true'
+			}
+			else {
+				return error('unknown config key "${args[1]}" (known: outdir, verbose)')
+			}
+		}
+		save_config(c)!
+		println('config updated: ${args[1]} = ${args[2]}')
+		return
+	}
+	return error('usage: vr config [set <key> <value>]')
+}
+
+// ---------------------------------------------------------------------------
+// compile / assemble / link / run / debug / test / bench
+
+fn toolchain_compile(args []string) ! {
+	mut src := ''
+	mut out := ''
+	mut i := 0
+	for i < args.len {
+		if args[i] == '-o' && i + 1 < args.len {
+			out = args[i + 1]
+			i += 2
+		} else {
+			src = args[i]
+			i++
+		}
+	}
+	if src == '' {
+		return error('usage: vr compile <file.vr> [-o out.vobj]')
+	}
+	o := compiler.compile_file(src)!
+	if out == '' {
+		out = src.all_before_last('.') + '.vobj'
+	}
+	obj.write(out, o)!
+	println('compiled ${src} -> ${out} (${o.code.len} bytes code, ${o.symbols.len} symbols, ${o.relocs.len} relocations)')
+}
+
+fn toolchain_assemble(args []string) ! {
+	mut src := ''
+	mut out := ''
+	mut i := 0
+	for i < args.len {
+		if args[i] == '-o' && i + 1 < args.len {
+			out = args[i + 1]
+			i += 2
+		} else {
+			src = args[i]
+			i++
+		}
+	}
+	if src == '' {
+		return error('usage: vr assemble <file.vasm> [-o out.vobj]')
+	}
+	o := assembler.assemble_file(src)!
+	if out == '' {
+		out = src.all_before_last('.') + '.vobj'
+	}
+	obj.write(out, o)!
+	println('assembled ${src} -> ${out} (${o.code.len} bytes code, ${o.symbols.len} symbols, ${o.relocs.len} relocations)')
+}
+
+fn toolchain_link(args []string) ! {
+	mut objs := []string{}
+	mut out := ''
+	mut i := 0
+	for i < args.len {
+		if args[i] == '-o' && i + 1 < args.len {
+			out = args[i + 1]
+			i += 2
+		} else {
+			objs << args[i]
+			i++
+		}
+	}
+	if objs.len == 0 {
+		return error('usage: vr link <a.vobj> [more.vobj ...] [-o out.vbin]')
+	}
+	if out == '' {
+		out = os.base(objs[0]).all_before_last('.') + '.vbin'
+	}
+	linker.link(objs, out)!
+	println('linked ${objs.len} object file(s) -> ${out}')
+}
+
+fn toolchain_run(args []string) ! {
+	if args.len == 0 {
+		return error('usage: vr run <file.vr|file.vbin>')
+	}
+	f := args[0]
+	if f.ends_with('.vbin') {
+		bin := obj.read_bin(f)!
+		vm.run(bin, 'main', false)!
+		return
+	}
+	if f.ends_with('.vr') {
+		run_src(f, 'main', false)!
+		return
+	}
+	return error('unsupported file type: ${f} (expected .vr or .vbin)')
+}
+
+fn toolchain_debug(args []string) ! {
+	if args.len == 0 {
+		return error('usage: vr debug <file.vr|file.vbin>')
+	}
+	f := args[0]
+	println('debug: tracing execution of ${f}')
+	if f.ends_with('.vbin') {
+		bin := obj.read_bin(f)!
+		vm.run(bin, 'main', true)!
+		return
+	}
+	if f.ends_with('.vr') {
+		run_src(f, 'main', true)!
+		return
+	}
+	return error('unsupported file type: ${f} (expected .vr or .vbin)')
+}
+
+fn toolchain_test(args []string) ! {
+	if args.len == 0 {
+		return error('usage: vr test <file.vr>')
+	}
+	src := args[0]
+	o := compiler.compile_file(src)!
+	mut tests := []string{}
+	for s in o.symbols {
+		if s.name.starts_with('test_') {
+			tests << s.name
+		}
+	}
+	if tests.len == 0 {
+		println('no test_* functions found in ${src}')
+		return
+	}
+	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
+	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
+	defer {
+		os.rm(tmp_obj) or {}
+		os.rm(tmp_bin) or {}
+	}
+	obj.write(tmp_obj, o)!
+	linker.link([tmp_obj], tmp_bin)!
+	bin := obj.read_bin(tmp_bin)!
+	mut passes := 0
+	mut fails := 0
+	for t in tests {
+		if run_test(bin, t) {
+			println('  PASS  ${t}')
+			passes++
+		} else {
+			fails++
+		}
+	}
+	println('')
+	println('${passes} passed, ${fails} failed (${tests.len} total)')
+	if fails > 0 {
+		exit(1)
+	}
+}
+
+fn run_test(bin obj.Bin, name string) bool {
+	vm.run(bin, name, false) or {
+		eprintln('  FAIL  ${name}  —  ${err}')
+		return false
+	}
+	return true
+}
+
+fn toolchain_bench(args []string) ! {
+	if args.len == 0 {
+		return error('usage: vr bench <file.vr> [iterations]')
+	}
+	src := args[0]
+	mut n := 1000
+	if args.len > 1 {
+		n = args[1].int()
+	}
+	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
+	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
+	defer {
+		os.rm(tmp_obj) or {}
+		os.rm(tmp_bin) or {}
+	}
+	o := compiler.compile_file(src)!
+	obj.write(tmp_obj, o)!
+	linker.link([tmp_obj], tmp_bin)!
+	bin := obj.read_bin(tmp_bin)!
+	start := time.now().unix_milli()
+	for _ in 0..n {
+		vm.run(bin, 'main', false)!
+	}
+	ms := time.now().unix_milli() - start
+	rate := if ms > 0 { f64(n) / (f64(ms) / 1000.0) } else { f64(0) }
+	println('bench: ${n} runs of main() in ${ms}ms (${rate:.0} runs/s)')
+}
+
+fn run_src(src string, entry string, trace bool) ! {
+	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
+	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
+	defer {
+		os.rm(tmp_obj) or {}
+		os.rm(tmp_bin) or {}
+	}
+	o := compiler.compile_file(src)!
+	obj.write(tmp_obj, o)!
+	linker.link([tmp_obj], tmp_bin)!
+	bin := obj.read_bin(tmp_bin)!
+	vm.run(bin, entry, trace)!
+}
+
+// ---------------------------------------------------------------------------
+// housekeeping
+
+fn toolchain_clean() {
+	mut n := 0
+	if files := os.ls('.') {
+		for f in files {
+			if f.ends_with('.vobj') || f.ends_with('.vbin') {
+				os.rm(f) or {}
+				n++
+			}
+		}
+	}
+	println('cleaned ${n} artifact(s) (the vr binary in bin/ is left alone; use "vr up" to rebuild it)')
+}
+
+fn toolchain_up() ! {
+	vcmd := os.find_abs_path_of_executable('v') or { 'v' }
+	out := os.join_path(project_root, 'bin', 'vr')
+	// build from the project root with `.`, not an explicit file/path:
+	// the latter makes V auto-select tcc without the boehm GC, a combination
+	// that miscompiles this codebase (verified: `v -o out .` is the safe one)
+	res := os.execute('cd "${project_root}" && ${vcmd} -o "${out}" .')
+	if res.exit_code != 0 {
+		return error('build failed:\n${res.output}')
+	}
+	println('rebuilt: ${out}')
+}
+
+fn toolchain_symlink() ! {
+	src := os.join_path(project_root, 'bin', 'vr')
+	if !os.exists(src) {
+		return error('bin/vr does not exist — run "vr up" first')
+	}
+	candidates := [os.join_path(os.home_dir(), '.local', 'bin'), '/usr/local/bin']
+	for dir in candidates {
+		if !os.exists(dir) {
+			continue
+		}
+		link_path := os.join_path(dir, 'vr')
+		if os.exists(link_path) {
+			os.rm(link_path) or {}
+		}
+		os.symlink(src, link_path) or { continue }
+		println('linked ${src} -> ${link_path}')
+		return
+	}
+	return error('no writable bin dir found; symlink ${src} into your PATH manually')
+}

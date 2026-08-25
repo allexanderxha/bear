@@ -1,0 +1,50 @@
+// constants.vr — demonstrates const declarations
+
+const MAX_SIZE = 100
+const MIN_VALUE = 0
+const IS_DEBUG = 1
+const VERSION = 42
+
+fn calculate(x) {
+	// constants work inside functions
+	if x > MAX_SIZE {
+		return MAX_SIZE
+	}
+	if x < MIN_VALUE {
+		return MIN_VALUE
+	}
+	return x
+}
+
+fn main() {
+	// constants at top level
+	assert MAX_SIZE == 100
+	assert MIN_VALUE == 0
+	assert IS_DEBUG == 1
+	assert VERSION == 42
+	println("Constants: 100, 0, 1, 42")
+	
+	// constants in expressions
+	let limit = MAX_SIZE * 2
+	assert limit == 200
+	println("MAX_SIZE * 2 = 200")
+	
+	// constants in conditions
+	if IS_DEBUG == 1 {
+		println("Debug mode is ON")
+	}
+	
+	// constants in functions
+	let val = calculate(150)
+	assert val == 100
+	println("calculate(150) = 100")
+	
+	let val2 = calculate(-5)
+	assert val2 == 0
+	println("calculate(-5) = 0")
+	
+	// constants with boolean operations
+	assert MAX_SIZE > MIN_VALUE
+	assert VERSION == 42
+	println("All constant assertions passed!")
+}

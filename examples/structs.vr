@@ -1,0 +1,59 @@
+// structs.vr — struct/record values with field access.
+//   vr run examples/structs.vr
+
+fn make_point(x, y) {
+	return { x: x, y: y }
+}
+
+fn dist_sq(p) {
+	return p.x * p.x + p.y * p.y
+}
+
+fn main() {
+	// struct literal: { name: value, ... }
+	let p = { name: "bob", age: 30 }
+	println(p)          // {name: bob, age: 30}
+	println(p.name)     // bob
+	println(p.age)      // 30
+
+	// field assignment mutates the record
+	p.age = 31
+	println(p.age)      // 31
+
+	// structs are reference values, like arrays
+	let q = p
+	q.age = 40
+	println(p.age)      // 40 — p and q share the same record
+
+	// structs flow through functions
+	let pt = make_point(3, 4)
+	println(dist_sq(pt)) // 25
+
+	// structs compose with arrays, in both directions
+	let pts = [{ x: 1, y: 2 }, { x: 10, y: 20 }]
+	println(pts[1].x)   // 10
+	pts[0].x = 99
+	println(pts[0].x)   // 99
+
+	let person = { name: "amy", addr: { city: "nyc", zip: 10001 } }
+	println(person.addr.city) // nyc
+	person.addr.zip = 90001
+	println(person.addr.zip)  // 90001
+
+	let holder = { items: [1, 2, 3] }
+	holder.items[1] = 42
+	println(holder.items) // [1, 42, 3]
+
+	// records can be built incrementally from an empty struct
+	let s = {}
+	s.kind = "point"
+	s.value = 7
+	println(s)          // {kind: point, value: 7}
+
+	// structs compare by identity with == / !=
+	let a = { n: 1 }
+	let b = a
+	let c = { n: 1 }
+	assert a == b
+	assert a != c
+}

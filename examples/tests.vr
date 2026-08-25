@@ -1,0 +1,232 @@
+// tests.vr — functions named test_* are picked up by `vr test`.
+//   vr test examples/tests.vr
+
+fn add(a, b) {
+	return a + b
+}
+
+fn test_add() {
+	assert add(2, 3) == 5
+	assert add(-1, 1) == 0
+}
+
+fn test_strings() {
+	let a = "foo"
+	let b = "bar"
+	assert a + b == "foobar"
+	assert a != b
+	assert a == "foo"
+}
+
+fn test_loops() {
+	let total = 0
+	let i = 1
+	while i <= 10 {
+		total = total + i
+		i = i + 1
+	}
+	assert total == 55
+}
+
+fn test_booleans() {
+	let x = 7
+	assert x > 3 and x < 10
+	assert x == 7 or x == 8
+	assert not (x == 0)
+}
+
+fn test_arrays() {
+	let a = [1, 2, 3]
+	assert len(a) == 3
+	assert a[0] == 1
+	assert a[2] == 3
+	a[1] = 42
+	assert a[1] == 42
+	push(a, 4)
+	assert len(a) == 4
+	assert a[3] == 4
+	let m = [[1, 2], [3, 4]]
+	assert m[1][0] == 3
+}
+
+fn test_for_range() {
+	let total = 0
+	for i in 0..5 {
+		total = total + i
+	}
+	assert total == 10 // 0+1+2+3+4
+	let inc = 0
+	for i in 1...3 {
+		inc = inc + i
+	}
+	assert inc == 6 // 1+2+3 (inclusive)
+}
+
+fn test_for_in() {
+	let a = [5, 6, 7]
+	let total = 0
+	for x in a {
+		total = total + x
+	}
+	assert total == 18
+	let squares = []
+	for i in 0..4 {
+		push(squares, i * i)
+	}
+	assert squares == squares // identity comparison
+	assert len(squares) == 4
+	assert squares[3] == 9
+}
+
+fn test_break_continue() {
+	// break exits the loop early
+	let total = 0
+	for i in 0..100 {
+		if i == 5 {
+			break
+		}
+		total = total + i
+	}
+	assert total == 10 // 0+1+2+3+4
+
+	// continue skips to the next iteration
+	let sum = 0
+	for i in 0..6 {
+		if i == 3 {
+			continue
+		}
+		sum = sum + i
+	}
+	assert sum == 12 // 0+1+2+4+5 (3 skipped)
+
+	// break and continue in while loops
+	let n = 0
+	while true {
+		n = n + 1
+		if n == 3 {
+			continue
+		}
+		if n == 5 {
+			break
+		}
+	}
+	assert n == 5
+
+	// continue advances the iterator in for-in loops (no infinite loop)
+	let odds = []
+	for x in [1, 2, 3, 4, 5] {
+		if x % 2 == 0 {
+			continue
+		}
+		push(odds, x)
+	}
+	assert odds == odds
+	assert len(odds) == 3
+	assert odds[2] == 5
+}
+
+fn test_else_if() {
+	let score = 85
+	let grade = ""
+	if score >= 90 {
+		grade = "A"
+	} else if score >= 80 {
+		grade = "B"
+	} else if score >= 70 {
+		grade = "C"
+	} else {
+		grade = "F"
+	}
+	assert grade == "B"
+	assert 10 > 5
+}
+
+fn test_match() {
+	let total = 0
+	match 2 {
+		1 {
+			total = total + 1
+		}
+		2 {
+			total = total + 10
+		}
+		else {
+			total = total + 100
+		}
+	}
+	assert total == 10 // matched the 2 arm
+
+	// match on strings
+	let word = "cat"
+	let sound = ""
+	match word {
+		"dog" {
+			sound = "woof"
+		}
+		"cat" {
+			sound = "meow"
+		}
+		else {
+			sound = "?"
+		}
+	}
+	assert sound == "meow"
+
+	// no else arm: nothing runs when nothing matches
+	let hit = 0
+	match 99 {
+		1 {
+			hit = 1
+		}
+		2 {
+			hit = 2
+		}
+	}
+	assert hit == 0
+}
+
+fn test_structs() {
+	let p = { name: "bob", age: 30 }
+	assert p.name == "bob"
+	assert p.age == 30
+	p.age = 31
+	assert p.age == 31
+
+	// structs are reference values
+	let q = p
+	q.age = 40
+	assert p.age == 40
+
+	// nested structs
+	let person = { name: "amy", addr: { city: "nyc", zip: 10001 } }
+	assert person.addr.city == "nyc"
+	person.addr.zip = 90001
+	assert person.addr.zip == 90001
+
+	// structs in arrays
+	let pts = [{ x: 1, y: 2 }, { x: 10, y: 20 }]
+	assert pts[1].x == 10
+	pts[0].x = 99
+	assert pts[0].x == 99
+
+	// arrays in structs
+	let holder = { items: [1, 2, 3] }
+	holder.items[1] = 42
+	assert holder.items[1] == 42
+
+	// structs passed to and returned from functions
+	let pt = { x: 3, y: 4 }
+	assert pt.x * pt.x + pt.y * pt.y == 25
+
+	// identity comparison
+	let a = { n: 1 }
+	let b = a
+	let c = { n: 1 }
+	assert a == b
+	assert a != c
+}
+
+fn test_failing() {
+	// this one is meant to fail — shows up in `vr test` output
+	assert 1 == 2
+}

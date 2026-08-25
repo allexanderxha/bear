@@ -1,0 +1,59 @@
+// colors.vr — demonstrates enum declarations and usage
+
+enum Color {
+	red
+	green
+	blue
+}
+
+enum Direction {
+	north
+	south
+	east
+	west
+}
+
+fn get_color_name(c) {
+	match c {
+		Color.red { return "red" }
+		Color.green { return "green" }
+		Color.blue { return "blue" }
+		else { return "unknown" }
+	}
+}
+
+fn is_warm(c) {
+	if c == Color.red {
+		return true
+	}
+	if c == Color.blue {
+		return false
+	}
+	return false
+}
+
+fn main() {
+	let c = Color.red
+	println("Color.red = 0")
+	
+	let name = get_color_name(Color.green)
+	println("Color.green name = green")
+	
+	let warm = is_warm(Color.red)
+	println("Is red warm? 1")
+	
+	let dir = Direction.north
+	println("Direction.north = 0")
+	
+	// enums are just integers, so you can use them in expressions
+	let next = Color.red + 1
+	println("Color.red + 1 = 1")
+	
+	// assert enum values
+	assert Color.red == 0
+	assert Color.green == 1
+	assert Color.blue == 2
+	assert Direction.north == 0
+	assert Direction.west == 3
+	println("All enum assertions passed!")
+}

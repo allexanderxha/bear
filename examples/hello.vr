@@ -1,0 +1,74 @@
+// hello.vr — a tour of the VuurRaaf language.
+// Run with:  vr run examples/hello.vr
+
+fn greet(name) {
+	println("hello, " + name + "!")
+}
+
+// recursive fibonacci
+fn fib(n) {
+	if n < 2 {
+		return n
+	}
+	return fib(n - 1) + fib(n - 2)
+}
+
+// returns n! via a loop
+fn fact(n) {
+	let result = 1
+	let i = 1
+	while i <= n {
+		result = result * i
+		i = i + 1
+	}
+	return result
+}
+
+fn main() {
+	greet("vuurraaf")
+
+	let x = 6 * 7
+	println("6 * 7 = ")
+	println(x)
+
+	let name = "world"
+	let msg = "hello " + name
+	println(msg)
+	println(msg == "hello world")
+
+	// booleans and short-circuiting
+	let big = x > 40 and x < 50
+	let small = x < 10 or x > 100
+	println("x > 40 and x < 50: ")
+	println(big)
+	println("x < 10 or x > 100: ")
+	println(small)
+	println("not big: ")
+	println(not big)
+
+	// if / else
+	if x > 40 {
+		println("x is big")
+	} else {
+		println("x is small")
+	}
+
+	// while loop
+	let i = 0
+	while i < 3 {
+		println("counting " + i)
+		i = i + 1
+	}
+
+	println("fib(10) = ")
+	println(fib(10))
+
+	println("fact(5) = ")
+	println(fact(5))
+
+	// asserts are checked at runtime by the vm
+	assert x == 42
+	assert fact(5) == 120
+	assert fib(10) == 55
+	println("all asserts passed")
+}

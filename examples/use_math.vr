@@ -1,0 +1,26 @@
+// use_math.vr — demonstrates the import system
+
+import "examples/math_utils.vr"
+
+fn main() {
+	// use functions from the imported library
+	let sum = add(10, 20)
+	println("10 + 20 = 30")
+	
+	let product = multiply(6, 7)
+	println("6 * 7 = 42")
+	
+	let fact5 = factorial(5)
+	println("5! = 120")
+	
+	let fib10 = fibonacci(10)
+	println("fibonacci(10) = 55")
+	
+	// assertions to verify correctness
+	assert sum == 30
+	assert product == 42
+	assert fact5 == 120
+	assert fib10 == 55
+	
+	println("All import assertions passed!")
+}
