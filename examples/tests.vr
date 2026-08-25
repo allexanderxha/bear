@@ -319,7 +319,7 @@ fn test_module_imports() {
 	}
 	assert os.base("a/b/c.vr") == "c.vr"
 	assert os.dir("a/b/c.vr") == "a/b"
-	assert len(os.glob("lib/*.vr")) == 9
+	assert len(os.glob("lib/*.vr")) == 10
 	let tmp = os.join(os.cwd(), "tmp_test.txt")
 	os.write_lines(tmp, ["x", "y"])
 	assert len(os.read_lines(tmp)) == 2
@@ -619,6 +619,43 @@ fn test_spawn_error_propagation() {
 fn worker_boom() {
 	let x = 1 / 0
 	return x
+}
+
+fn test_string_coercion() {
+	// String + any value stringifies, so error messages "just work"
+	let e = { code: 403, msg: "forbidden" }
+	assert "err: " + e == "err: {code: 403, msg: forbidden}"
+	assert "n=" + 42 == "n=42"
+	assert "f=" + 3.5 == "f=3.5"
+	assert "a=" + [1, 2] == "a=[1, 2]"
+	assert "b=" + none == "b=none"
+}
+
+fn test_typed_throw() {
+	// throw and catch arbitrary values (structs, ints, floats)
+	mut got = ""
+	try {
+		throw { reason: "boom" }
+	} catch err {
+		got = "" + err
+	}
+	assert got == "{reason: boom}"
+
+	mut gotn = -1
+	try {
+		throw 99
+	} catch err {
+		gotn = int(err)
+	}
+	assert gotn == 99
+}
+
+fn test_flag_parsing() {
+	// flags are read from args() at runtime; here we check the lookup helpers
+	// behave with no flags (defaults) — the actual parse is exercised in CI.
+	assert flag_val("missing") == ""
+	assert flag_has("missing") == 0
+	assert len(flag_positional()) == 0
 }
 
 fn test_failing() {

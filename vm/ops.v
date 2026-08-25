@@ -4,6 +4,18 @@ module vm
 import math
 
 fn (mut v Vm) add(a i64, b i64) !i64 {
+	// String + any: coerce the other operand to its string form so that
+	// `"caught: " + e`, `"n=" + count`, and record/array debugging "just
+	// work" the way users expect when building messages.
+	if v.is_str(a) && !v.is_str(b) {
+		return v.alloc_str(v.strings[v.hand(a)] + v.val_str(b, 0))
+	}
+	if v.is_str(b) && !v.is_str(a) {
+		return v.alloc_str(v.val_str(a, 0) + v.strings[v.hand(b)])
+	}
+	if v.is_str(a) && v.is_str(b) {
+		return v.alloc_str(v.strings[v.hand(a)] + v.strings[v.hand(b)])
+	}
 	if v.is_none(a) || v.is_none(b) {
 		return error('cannot use none with +')
 	}
@@ -12,15 +24,6 @@ fn (mut v Vm) add(a i64, b i64) !i64 {
 	}
 	if v.is_struct(a) || v.is_struct(b) {
 		return error('cannot add structs with +')
-	}
-	if v.is_str(a) && v.is_str(b) {
-		return v.alloc_str(v.strings[v.hand(a)] + v.strings[v.hand(b)])
-	}
-	if v.is_str(a) {
-		return v.alloc_str(v.strings[v.hand(a)] + v.num_str(b))
-	}
-	if v.is_str(b) {
-		return v.alloc_str(v.num_str(a) + v.strings[v.hand(b)])
 	}
 	if v.is_float(a) || v.is_float(b) {
 		return v.push_float(v.to_f64(a) + v.to_f64(b))

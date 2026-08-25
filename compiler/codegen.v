@@ -1040,6 +1040,13 @@ fn builtin_spec(name string) (int, int) {
 		// concurrency
 		'spawn' { native_spawn, 1 }
 		'spawn_join' { native_spawn_join, 1 }
+		// interactive input
+		'read_line' { native_read_line, 0 }
+		'input' { native_input, 1 }
+		// getopt-style flag parsing
+		'flag_val' { native_flag_val, 1 }
+		'flag_has' { native_flag_has, 1 }
+		'flag_positional' { native_flag_positional, 0 }
 		'build_is_dir' { native_build_is_dir, 1 }
 		'cwd' { native_cwd, 0 }
 		'json_pretty' { native_json_pretty, 1 }
@@ -1301,7 +1308,7 @@ fn (mut g Gen) expr_type(e Expr) string {
 			'build_dir', 'build_join', 'build_root' { 'string' }
 			'json_encode', 'format', 'replace', 'pad', 'pad_left', 'repeat', 'sb_new', 'sb_add', 'sb_str' { 'string' }
 			'sb_len' { 'int' }
-			'cwd', 'json_pretty' { 'string' }
+			'cwd', 'json_pretty', 'read_line', 'input' { 'string' }
 			else { '' }
 		}
 	}

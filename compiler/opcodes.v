@@ -182,3 +182,12 @@ const native_sb_len = 192
 // concurrency: spawn/join threads
 const native_spawn = 193
 const native_spawn_join = 194
+
+// interactive input: read a line from stdin
+const native_read_line = 195
+const native_input = 196
+
+// getopt-style flag parsing over args()
+const native_flag_val = 197
+const native_flag_has = 198
+const native_flag_positional = 199

@@ -228,11 +228,9 @@ Module functions are namespaced: `os.exists()`, `json.encode()`, ...
 | `time` | `now()` (epoch s), `ms()` (epoch ms), `format(t, "YYYY-MM-DD HH:mm:ss")`, `date(t)`, `clock(t)`, `parse("2026-08-25 13:36:45")`, `add_days/add_hours/add_minutes/add_seconds`, `weekday(t)` — Moment-style tokens |
 | `regex` | `is_match(pattern, s)`, `find_all(pattern, s)`, `replace(pattern, s, repl)`, `split(pattern, s)` — RE2 syntax; use raw strings `r"\d+"` for patterns |
 | `crypto` | `sha256(s)`, `md5(s)`, `base64_encode(s)`, `base64_decode(s)` |
-| `csv` | `parse(s)` — returns an array of rows (arrays of cell strings) |
+| `cli` | getopt-style flag parsing over `args()`: `flag(name, default)`, `has(name)`, `positional()` — supports `--name value`, `--name=value`, boolean `--flag`, and short aliases `-n=value` |
 
-Examples: `examples/imports.vr`, `examples/http.vr`, `examples/time.vr`, `examples/stdlib.vr` (tests for the regex/crypto/csv/os/time additions).
-
-Examples: `examples/imports.vr`, `examples/http.vr`, `examples/time.vr`.
+Examples: `examples/imports.vr`, `examples/http.vr`, `examples/time.vr`, `examples/cli_tool.vr` (CLI flags + interactive input + typed errors), `examples/stdlib.vr` (tests for the regex/crypto/csv/os/time additions).
 
 ## The VuurRaaf language
 
@@ -352,8 +350,19 @@ fn main() {
 - arrays: `[e1, e2, ...]`, indexing `a[i]` (read and write), `len(a)`,
   `push/insert/remove/pop/sort/reverse/clone/index_of/join`; array literals
   may nest; `sort` is a stable merge sort — guaranteed O(n log n)
-- error handling: `try { ... } catch e { ... }` and `throw "message"` — the
-  runtime unwinds to the nearest catch
+- error handling: `try { ... } catch e { ... }` and `throw <any value>` — the
+  runtime unwinds to the nearest catch. Throwing a struct/int/float/string works
+  and the caught value stringifies safely
+- `String + <any value>` stringifies the other operand, so `"caught: " + e`,
+  `"n=" + count`, and record/array debug messages "just work". Only
+  `Array + Array` / `struct + struct` remain errors
+- interactive input: `read_line()` reads one line from stdin (empty on EOF),
+  and `input(prompt)` shows a prompt on stderr then reads a line — stdout stays
+  clean for piping
+- flag parsing: `flag_val(name)` / `flag_has(name)` / `flag_positional()` parse
+  `args()` getopt-style (`--name value`, `--name=value`, `--verbose`, `-n=value`,
+  `--` stops parsing, `-5` is a value not a flag); use `import cli` for the
+  namespaced `cli.flag` / `cli.has` / `cli.positional` helpers
 - bitwise operators: `& | ^ ~ << >>`
 - host builtins: `read_file` / `write_file`, `args()`, `getenv` / `setenv`,
   `exit`, `sleep`, `time()`, `type(x)`, `str(x)`, `int(x)`, `split` / `join`
@@ -387,7 +396,7 @@ fn main() {
 - constants: `const NAME = 42` (compile-time integer/bool values)
 - operators: `+ - * / %`, `== != < <= > >=`, `and or not`, `& | ^ ~ << >>`,
   unary `-`; constant expressions fold at compile time
-- statements: `let`, assignment, `if/else`, `match`, `while`, `for`,
+- statements: `let`/`mut`, assignment, `if/else`, `match`, `while`, `for`,
   `break`, `continue`, `return`, `assert`, `try/catch`/`throw`, calls,
   `print(...)` / `println(...)`
 - comments: `//`

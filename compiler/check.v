@@ -631,7 +631,10 @@ fn builtin_result_type(name string) TypeInfo {
 		'sb_len' { TypeInfo{ kind: .int_t } }
 		'spawn' { TypeInfo{ kind: .int_t } }
 		'spawn_join' { TypeInfo{ kind: .unknown } }
-		'cwd', 'json_pretty' { TypeInfo{ kind: .string_t } }
+		'cwd', 'json_pretty', 'read_line', 'input' { TypeInfo{ kind: .string_t } }
+		'flag_val' { TypeInfo{ kind: .string_t } }
+		'flag_has' { TypeInfo{ kind: .int_t } }
+		'flag_positional' { TypeInfo{ kind: .array_t } }
 		'build_is_dir' { TypeInfo{ kind: .int_t } }
 		// build-module builtins (.vrmm)
 		'build_compile', 'build_assemble', 'build_link', 'build_exec', 'build_base',

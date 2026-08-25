@@ -99,6 +99,20 @@ mut:
 	fn_of_ip   []int          // code offset -> function index (for profiling)
 	max_ops    i64            // instruction budget; 0 = unlimited (fuzzing safety)
 	ops        i64            // instructions executed so far
+	flags      FlagArgs       // cached getopt parse of prog_args (lazy)
+}
+
+// FlagArgs is the parsed view of the command-line arguments, computed lazily
+// and shared by flag_val / flag_has / flag_positional so that a value consumed
+// as a flag value is never also returned as a positional.
+struct FlagArgs {
+	// parsed indicates the parse is only valid when built against the same
+	// argv length as prog_args currently has (args never change at runtime).
+mut:
+	parsed  bool
+	vals    map[string]string // canonical flag name -> value ('true' for boolean w/o inline)
+	ordered []string          // flag names in first-appearance order
+	positionals []string      // non-flag arguments not consumed as flag values
 }
 
 fn bool_i64(b bool) i64 {

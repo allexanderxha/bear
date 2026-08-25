@@ -684,6 +684,36 @@ fn (mut v Vm) native(id int, _argc int) ! {
 		native_spawn_join {
 			v.push(v.native_spawn_join()!)!
 		}
+		native_read_line {
+			line := os.input_opt('') or { '' } // EOF → empty string
+			v.push(v.alloc_str(line))!
+		}
+		native_input {
+			prompt := v.pop_str()!
+			eprint(prompt) // prompt on stderr so stdout stays clean for piping
+			line := os.input_opt('') or { '' }
+			v.push(v.alloc_str(line))!
+		}
+		native_flag_val {
+			name := v.pop_str()!
+			v.ensure_flags()
+			v.push(v.alloc_str(v.flag_lookup(name)))!
+		}
+		native_flag_has {
+			name := v.pop_str()!
+			v.ensure_flags()
+			v.push(v.enc_int(if v.flag_present_key(name) { 1 } else { 0 }))!
+		}
+		native_flag_positional {
+			v.ensure_flags()
+			mut arr := []i64{}
+			for s in v.flags.positionals {
+				v.strings << s
+				arr << v.mkstr(v.strings.len - 1)
+			}
+			v.arrays << arr
+			v.push(v.mkarr(v.arrays.len - 1))!
+		}
 		native_cwd {
 			v.push(v.alloc_str(os.getwd()))!
 		}
@@ -1081,6 +1111,124 @@ fn (mut v Vm) pop_str() !string {
 		return error('expected a string argument')
 	}
 	return v.strings[v.hand(x)]
+}
+
+// --------------------------------------------------------------------------
+// getopt-style flag parsing over the program's args.
+//
+// Flags are parsed once (lazily) into v.flags, and every flag / positional
+// query reads from that shared result, so a token consumed as a flag value is
+// never also reported as a positional. Supported forms: --name value,
+// --name=value, boolean --name, single-letter short aliases (-n) derived from
+// the long name's first character, and `--` to stop flag parsing. Negative
+// numbers like -5 are treated as values, not flags. The first occurrence of a
+// flag wins.
+fn (mut v Vm) ensure_flags() {
+	if v.flags.parsed {
+		return
+	}
+	v.flags = FlagArgs{ parsed: true }
+	mut consumed_value := false // the current flag took a separate value token
+	mut i := 0
+	for i < v.prog_args.len {
+		a := v.prog_args[i]
+		if a == '--' {
+			// everything after -- is positional
+			v.flags.positionals << v.prog_args[i + 1..]
+			break
+		}
+		if !v.flag_token(a) {
+			// positional, unless it was already consumed as a flag's value below
+			v.flags.positionals << a
+			i++
+			continue
+		}
+		// a flag token. Only long flags (--name) consume a separate value token;
+		// short flags (-v) are treated as boolean to avoid swallowing a following
+		// positional (use -n=val or --name val for short aliases needing a value).
+		name, val, has_inline := v.flag_key_val(a)
+		long_flag := a.starts_with('--')
+		if name !in v.flags.vals {
+			if has_inline {
+				v.flags.vals[name] = val
+				i++
+				continue
+			}
+			if long_flag && i + 1 < v.prog_args.len && !v.flag_token(v.prog_args[i + 1]) {
+				v.flags.vals[name] = v.prog_args[i + 1]
+				i += 2
+			} else {
+				v.flags.vals[name] = 'true'
+				i++
+			}
+			continue
+		}
+		// duplicate flag: keep the first value, but still consume its value
+		if long_flag && !has_inline && i + 1 < v.prog_args.len && !v.flag_token(v.prog_args[i + 1]) {
+			i += 2
+		} else {
+			i++
+		}
+	}
+}
+
+// flag_token reports whether a is parsed as a flag rather than a value.
+// flag_lookup returns the value of flag `name`, accepting its single-letter
+// short alias as well. Returns '' when the flag was not passed.
+fn (mut v Vm) flag_lookup(name string) string {
+	if name in v.flags.vals {
+		return v.flags.vals[name]
+	}
+	if name.len > 1 {
+		short := name[..1]
+		if short in v.flags.vals {
+			return v.flags.vals[short]
+		}
+	}
+	return ''
+}
+
+// flag_present_key reports whether flag `name` (or its short alias) was passed
+// at all, regardless of its value.
+fn (mut v Vm) flag_present_key(name string) bool {
+	if name in v.flags.vals {
+		return true
+	}
+	if name.len > 1 {
+		return name[..1] in v.flags.vals
+	}
+	return false
+}
+
+fn (mut v Vm) flag_token(a string) bool {
+	if a == '-' {
+		return false
+	}
+	if !a.starts_with('-') {
+		return false
+	}
+	// a negative number (-5, -3.14) is a value, not a flag
+	if a.len > 1 && a[1] >= `0` && a[1] <= `9` {
+		return false
+	}
+	return true
+}
+
+// flag_key_val splits a flag token into its canonical (dash-stripped) name and
+// any inline value. Returns (name, value, has_inline_value).
+fn (mut v Vm) flag_key_val(a string) (string, string, bool) {
+	raw := a.trim_left('-') // strip leading dashes
+	mut eq := -1
+	for i in 0..raw.len {
+		if raw[i] == `=` {
+			eq = i
+			break
+		}
+	}
+	if eq >= 0 {
+		return raw[..eq], raw[eq + 1..], true
+	}
+	return raw, '', false
 }
 
 // type_name returns the type label of a tagged value.

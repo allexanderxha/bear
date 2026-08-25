@@ -1,0 +1,60 @@
+// cli_tool.vr — a miniature daily-driver CLI tool demonstrating the pieces a
+// real command-line program needs: flag parsing, interactive input, and typed
+// error handling.
+//
+//   import cli
+//   require_name()  # (see below)
+//
+//   vr run examples/cli_tool.vr --name alice --verbose
+//   vr run examples/cli_tool.vr --name=alice file1 file2
+//
+// Exit codes: 0 on success, 1 on a runtime (bad input) error, 2 on usage/flag
+// errors.
+
+import cli
+
+fn main() {
+    // --- flag parsing -------------------------------------------------------
+    let name = cli.flag("name", "world")   // match --name/-n and --name=value
+    let verbose = cli.has("verbose")         // match --verbose and -v
+    let files = cli.positional()
+    if verbose {
+        println("files=" + str(files))
+    }
+
+    // --- typed throw / catchable errors -----------------------------------
+    try {
+        if len(name) == 0 {
+            throw { kind: "usage", detail: "name must not be empty" }
+        }
+    } catch err {
+        println("error: " + err)
+        exit(2)
+    }
+
+    println("hello, " + name + "!")
+
+    // --- interactive input -------------------------------------------------
+    println("-- a quick questionnaire (pipe answers, or run interactively) --")
+    let age = input("your age? ")
+    if age == "" {
+        println("(no answer supplied)")
+    } else if int_age(age) > 0 {
+        println("noted (born ~" + str(current_year() - int_age(age)) + ")")
+    } else {
+        println("noted")
+    }
+
+    println("done.")
+}fn int_age(s) {
+	try {
+		return int(s)
+	} catch e {
+		return 0
+	}
+}
+
+fn current_year() {
+	// 2026 — keep in sync; or used as a stand-in for now().year
+	return 2026
+}
