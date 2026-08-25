@@ -20,7 +20,7 @@ fn main() {
 
 	// milliseconds for timing
 	let start = time.ms()
-	let x = 0
+	mut x = 0
 	for i in 0..100000 {
 		x = x + i
 	}

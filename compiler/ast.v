@@ -80,6 +80,7 @@ pub mut:
 pub struct Stmt {
 pub mut:
 	kind      StmtKind
+	mutable   bool      // let_stmt/destruct_stmt: bound with `mut` (reassignable)
 	target    string
 	idx_target string // for_in_stmt: index variable name (empty when unused)
 	destruct_targets []string // destruct_stmt: names to bind

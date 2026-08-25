@@ -33,8 +33,8 @@ fn test_strings() {
 }
 
 fn test_loops() {
-	let total = 0
-	let i = 1
+	mut total = 0
+	mut i = 1
 	while i <= 10 {
 		total = total + i
 		i = i + 1
@@ -64,12 +64,12 @@ fn test_arrays() {
 }
 
 fn test_for_range() {
-	let total = 0
+	mut total = 0
 	for i in 0..5 {
 		total = total + i
 	}
 	assert total == 10 // 0+1+2+3+4
-	let inc = 0
+	mut inc = 0
 	for i in 1...3 {
 		inc = inc + i
 	}
@@ -78,7 +78,7 @@ fn test_for_range() {
 
 fn test_for_in() {
 	let a = [5, 6, 7]
-	let total = 0
+	mut total = 0
 	for x in a {
 		total = total + x
 	}
@@ -94,7 +94,7 @@ fn test_for_in() {
 
 fn test_break_continue() {
 	// break exits the loop early
-	let total = 0
+	mut total = 0
 	for i in 0..100 {
 		if i == 5 {
 			break
@@ -104,7 +104,7 @@ fn test_break_continue() {
 	assert total == 10 // 0+1+2+3+4
 
 	// continue skips to the next iteration
-	let sum = 0
+	mut sum = 0
 	for i in 0..6 {
 		if i == 3 {
 			continue
@@ -114,7 +114,7 @@ fn test_break_continue() {
 	assert sum == 12 // 0+1+2+4+5 (3 skipped)
 
 	// break and continue in while loops
-	let n = 0
+	mut n = 0
 	while true {
 		n = n + 1
 		if n == 3 {
@@ -141,7 +141,7 @@ fn test_break_continue() {
 
 fn test_else_if() {
 	let score = 85
-	let grade = ""
+	mut grade = ""
 	if score >= 90 {
 		grade = "A"
 	} else if score >= 80 {
@@ -156,7 +156,7 @@ fn test_else_if() {
 }
 
 fn test_match() {
-	let total = 0
+	mut total = 0
 	match 2 {
 		1 {
 			total = total + 1
@@ -172,7 +172,7 @@ fn test_match() {
 
 	// match on strings
 	let word = "cat"
-	let sound = ""
+	mut sound = ""
 	match word {
 		"dog" {
 			sound = "woof"
@@ -187,7 +187,7 @@ fn test_match() {
 	assert sound == "meow"
 
 	// no else arm: nothing runs when nothing matches
-	let hit = 0
+	mut hit = 0
 	match 99 {
 		1 {
 			hit = 1
@@ -376,7 +376,7 @@ fn test_closures() {
 	assert "v=" + str(dbl(4)) == "v=8"
 	// closure containing a loop
 	let sum = fn () {
-		let total = 0
+		mut total = 0
 		for i in 0..5 {
 			total = total + i
 		}
@@ -402,7 +402,7 @@ fn test_enums() {
 	let next = Suit.hearts + 1
 	assert next == 1
 	// enum iteration
-	let names = []
+	mut names = []
 	for s in Suit {
 		names = push(names, s.to_string())
 	}
@@ -471,7 +471,7 @@ fn test_closure_capture() {
 	assert greet() == "hi alice age=30"
 
 	// capture by value: later changes to the outer var don't affect the closure
-	let counter = 10
+	mut counter = 10
 	let read = fn() {
 		return counter
 	}
@@ -491,7 +491,7 @@ fn test_closure_capture() {
 	assert outer() == 106
 
 	// assignment to a captured variable writes the closure's own copy
-	let n = 1
+	mut n = 1
 	let bump = fn() {
 		n = n + 1
 		return n
@@ -530,17 +530,17 @@ fn test_dynamic_map_keys() {
 
 fn test_sort_large() {
 	// merge sort must handle large arrays (O(n log n)) and stay sorted
-	let a = []
+	mut a = []
 	let n = 2000
-	let i = 0
+	mut i = 0
 	while i < n {
 		a = push(a, (n - i) % 97)
 		i = i + 1
 	}
 	sort(a)
 	assert len(a) == n
-	let ok = 1
-	let j = 1
+	mut ok = 1
+	mut j = 1
 	while j < n {
 		if a[j - 1] > a[j] {
 			ok = 0
@@ -550,6 +550,75 @@ fn test_sort_large() {
 	assert ok == 1
 	assert a[0] == 0
 	assert a[n - 1] == 96
+}
+
+fn test_mutable_bindings() {
+	// `let` is immutable: reassignment is a compile-time error (tested in CI)
+	// `mut` opts into reassignment
+	mut counter = 0
+	counter = counter + 1
+	counter = counter + 2
+	assert counter == 3
+	// `let` still reads fine and does not accept reassignment
+	let fixed = 42
+	assert fixed == 42
+}
+
+fn test_string_builder() {
+	// string builders avoid O(n^2) reallocation of repeated `+`
+	mut sb = strings.builder()
+	for i in 0..10 {
+		sb = strings.build_add(sb, "x" + str(i) + ",")
+	}
+	let out = strings.build_str(sb)
+	assert out == "x0,x1,x2,x3,x4,x5,x6,x7,x8,x9,"
+}
+
+fn test_spawn_join() {
+	// spawn runs a closure on an OS thread; spawn_join waits and returns
+	let j1 = spawn(worker_sum, 100)
+	let j2 = spawn(worker_sum, 200)
+	let r1 = spawn_join(j1)
+	let r2 = spawn_join(j2)
+	assert r1 == 4950
+	assert r2 == 19900
+}
+
+fn worker_sum(n) {
+	mut s = 0
+	mut i = 0
+	while i < n {
+		s = s + i
+		i = i + 1
+	}
+	return s
+}
+
+fn test_spawn_string_result() {
+	let j = spawn(worker_greet, "world")
+	let res = spawn_join(j)
+	assert res == "hello world"
+}
+
+fn worker_greet(name) {
+	return "hello " + name
+}
+
+fn test_spawn_error_propagation() {
+	mut caught = false
+	try {
+		let j = spawn(worker_boom)
+		let r = spawn_join(j)
+		assert r == 0
+	} catch e {
+		caught = true
+	}
+	assert caught
+}
+
+fn worker_boom() {
+	let x = 1 / 0
+	return x
 }
 
 fn test_failing() {

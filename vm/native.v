@@ -640,6 +640,50 @@ fn (mut v Vm) native(id int, _argc int) ! {
 			}
 			v.push(v.alloc_str(s.repeat(n)))!
 		}
+		// -------------------------------------------------------------------
+		// string builder — accumulate pieces and join once (linear, not
+		// quadratic like repeated `+` concatenation)
+		native_sb_new {
+			v.builders << StrBuilder{}
+			v.push(v.mkbuilder(v.builders.len - 1))!
+		}
+		native_sb_add {
+			x := v.pop()!
+			sb := v.pop()!
+			if !v.is_builder(sb) || !v.valid_builder_handle(sb) {
+				return error('sb_add expects a string builder as its first argument')
+			}
+			if v.is_str(x) && v.valid_handle(x) {
+				v.builders[v.hand(sb)].parts << v.strings[v.hand(x)]
+			} else {
+				v.builders[v.hand(sb)].parts << v.val_str(x, 0)
+			}
+			v.push(sb)!
+		}
+		native_sb_str {
+			sb := v.pop()!
+			if !v.is_builder(sb) || !v.valid_builder_handle(sb) {
+				return error('sb_str expects a string builder')
+			}
+			v.push(v.alloc_str(v.builders[v.hand(sb)].parts.join('')))!
+		}
+		native_sb_len {
+			sb := v.pop()!
+			if !v.is_builder(sb) || !v.valid_builder_handle(sb) {
+				return error('sb_len expects a string builder')
+			}
+			mut n := 0
+			for p in v.builders[v.hand(sb)].parts {
+				n += p.len
+			}
+			v.push(v.enc_int(i64(n)))!
+		}
+		native_spawn {
+			v.push(v.native_spawn(_argc)!)!
+		}
+		native_spawn_join {
+			v.push(v.native_spawn_join()!)!
+		}
 		native_cwd {
 			v.push(v.alloc_str(os.getwd()))!
 		}

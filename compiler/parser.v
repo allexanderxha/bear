@@ -315,9 +315,11 @@ fn (mut p Parser) parse_block() ![]Stmt {
 fn (mut p Parser) parse_stmt() !Stmt {
 	t := p.cur()
 	match t.kind {
-		.kw_let {
+		.kw_let, .kw_mut {
+			mutable := t.kind == .kw_mut
 			p.advance()
-			// destructuring let: `let { a, b } = expr` or `let [a, b] = expr`
+			// mutable with destructuring is not supported (kept simple); `let {
+			// a, b } = x` and `let [a, b] = x` stay immutable-style bindings
 			if p.cur().kind == .lbrace || p.cur().kind == .lbracket {
 				is_field := p.cur().kind == .lbrace
 				p.advance()
@@ -344,7 +346,7 @@ fn (mut p Parser) parse_stmt() !Stmt {
 			name := p.expect(.ident, 'variable name')!
 			p.expect(.assign, "'='")!
 			e := p.parse_expr()!
-			return Stmt{ kind: .let_stmt, target: name.lit, expr: e, line: t.line }
+			return Stmt{ kind: .let_stmt, target: name.lit, expr: e, mutable: mutable, line: t.line }
 		}		.kw_if {
 			return p.parse_if(t)!
 		}

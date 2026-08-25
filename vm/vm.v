@@ -105,6 +105,7 @@ fn new_vm(bin obj.Bin, entry string, opts RunOpts) !Vm {
 		lines:      bin.lines
 		fns:        bin.fns
 		const_strs: bin.strings.len
+		bin:        bin
 		build_root: opts.root
 		dbg_locals: bin.locals
 		max_ops:    opts.max_ops

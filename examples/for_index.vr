@@ -10,7 +10,7 @@ fn main() {
     
     // use the index for computation
     let nums = [10, 20, 30, 40, 50]
-    let sum = 0
+    mut sum = 0
     for i, v in nums {
         if i % 2 == 0 {
             sum += v

@@ -44,6 +44,7 @@ pub enum TokKind {
 	kw_fn
 	kw_struct
 	kw_let
+	kw_mut
 	kw_if
 	kw_else
 	kw_while

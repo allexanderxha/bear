@@ -15,6 +15,7 @@ const tag_struct = u64(2)
 const tag_arr = u64(3)
 const tag_float = u64(4)
 const tag_closure = u64(5)
+const tag_builder = u64(7)
 
 // none_val is the sentinel for the `none` literal (and JSON null). Tag 110
 // is not a valid encoded integer (those are multiples of 8) nor any handle,
@@ -48,6 +49,10 @@ fn (mut v Vm) is_float(x i64) bool {
 
 fn (mut v Vm) is_closure(x i64) bool {
 	return u64(x) & tag_mask == tag_closure
+}
+
+fn (mut v Vm) is_builder(x i64) bool {
+	return u64(x) & tag_mask == tag_builder
 }
 
 fn (mut v Vm) is_none(x i64) bool {
@@ -89,6 +94,10 @@ fn (mut v Vm) mkfloat(idx int) i64 {
 
 fn (mut v Vm) mkclosure(idx int) i64 {
 	return i64((u64(idx) << 3) | tag_closure)
+}
+
+fn (mut v Vm) mkbuilder(idx int) i64 {
+	return i64((u64(idx) << 3) | tag_builder)
 }
 
 // push_float interns a float into the pool and returns its tagged handle.
@@ -137,6 +146,11 @@ fn (mut v Vm) valid_closure_handle(x i64) bool {
 	return h >= 0 && h < v.closures.len
 }
 
+fn (mut v Vm) valid_builder_handle(x i64) bool {
+	h := v.hand(x)
+	return h >= 0 && h < v.builders.len
+}
+
 // valid_handle_for bounds-checks a handle against the pool matching its tag.
 fn (mut v Vm) valid_handle_for(x i64) bool {
 	return match v.tag(x) {
@@ -145,6 +159,7 @@ fn (mut v Vm) valid_handle_for(x i64) bool {
 		tag_arr { v.valid_arr_handle(x) }
 		tag_float { v.valid_float_handle(x) }
 		tag_closure { v.valid_closure_handle(x) }
+		tag_builder { v.valid_builder_handle(x) }
 		else { true }
 	}
 }

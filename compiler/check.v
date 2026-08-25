@@ -40,14 +40,15 @@ struct FnSig {
 
 struct Checker {
 mut:
-	types   map[string]TypeInfo // current scope: local name -> type
-	fns     map[string]FnSig
-	structs map[string][]string
-	enums   map[string][]string
-	consts  map[string]TypeInfo
+	types     map[string]TypeInfo // current scope: local name -> type
+	mutable   map[string]bool     // local names bound with `mut`, params, loop vars; only these may be reassigned
+	fns       map[string]FnSig
+	structs   map[string][]string
+	enums     map[string][]string
+	consts    map[string]TypeInfo
 	loop_depth int
-	checked map[string]bool  // imported files already checked
-	modules map[string]bool  // imported module names (bare `import os`)
+	checked   map[string]bool // imported files already checked
+	modules   map[string]bool // imported module names (bare `import os`)
 }
 
 // check validates a parsed program and returns an error on the first problem.
@@ -148,9 +149,12 @@ fn (mut c Checker) check_fn(fd FnDecl) ! {
 	// receiver and parameters are untyped (unknown) — the runtime is dynamic
 	if fd.recv_name.len > 0 {
 		c.types[fd.recv_name] = TypeInfo{ kind: .struct_t }
+		c.mutable[fd.recv_name] = true
 	}
 	for p in fd.params {
 		c.types[p] = TypeInfo{ kind: .unknown }
+		// parameters are reassignable: callers pass values, bodies may rewrite
+		c.mutable[p] = true
 	}
 	for st in fd.body {
 		c.check_stmt(st)!
@@ -165,17 +169,22 @@ fn (mut c Checker) check_stmt(st Stmt) ! {
 		.let_stmt {
 			t := c.check_expr(st.expr)!
 			c.types[st.target] = t
+			c.mutable[st.target] = st.mutable // false for `let`, true for `mut`
 		}
 		.destruct_stmt {
 			base := c.check_expr(st.expr)!
 			for name in st.destruct_targets {
 				c.types[name] = if st.destruct_field { TypeInfo{ kind: .unknown } } else { TypeInfo{ kind: .unknown } }
+				c.mutable[name] = false
 			}
 			_ = base
 		}
 		.assign_stmt {
 			if st.target !in c.types {
 				return error('unknown variable "${st.target}" (line ${st.line})')
+			}
+			if !(st.target in c.mutable) || !c.mutable[st.target] {
+				return error('cannot reassign immutable "${st.target}" — declare it with `mut` (line ${st.line})')
 			}
 			_ = c.check_expr(st.expr)!
 		}
@@ -225,6 +234,7 @@ fn (mut c Checker) check_stmt(st Stmt) ! {
 			c.expect_numeric(start_t, 'range start', st.line)!
 			c.expect_numeric(end_t, 'range end', st.line)!
 			c.types[st.target] = TypeInfo{ kind: .int_t }
+			c.mutable[st.target] = true // the loop advances it; bodies may too
 			c.loop_depth++
 			for s in st.body {
 				c.check_stmt(s)!
@@ -243,8 +253,10 @@ fn (mut c Checker) check_stmt(st Stmt) ! {
 				}
 				c.types[st.target] = TypeInfo{ kind: .unknown }
 			}
+			c.mutable[st.target] = true // loop vars are reassigned by iteration
 			if st.idx_target.len > 0 {
 				c.types[st.idx_target] = TypeInfo{ kind: .int_t }
+				c.mutable[st.idx_target] = true
 			}
 			c.loop_depth++
 			for s in st.body {
@@ -295,6 +307,10 @@ fn (mut c Checker) check_expr(e Expr) !TypeInfo {
 				c.types[e.name]
 			} else if e.name in c.consts {
 				c.consts[e.name]
+			} else if e.name in c.fns {
+				// a bare function name used as a value (e.g. the first argument
+				// of `spawn`) evaluates to a closure
+				TypeInfo{ kind: .unknown }
 			} else {
 				return error('unknown variable "${e.name}" (line ${e.line})')
 			}
@@ -539,6 +555,16 @@ fn (mut c Checker) check_call(e Expr) !TypeInfo {
 	// host builtins (native) — validate arity from the spec table
 	bid, bargc := builtin_spec(e.name)
 	if bid >= 0 {
+		if e.name == 'spawn' {
+			// variadic: a function followed by zero or more arguments
+			if e.args.len < 1 {
+				return error('spawn() expects a function plus zero or more arguments (line ${e.line})')
+			}
+			for a in e.args {
+				_ = c.check_expr(a)!
+			}
+			return builtin_result_type(e.name)
+		}
 		if e.args.len != bargc {
 			return error('${e.name}() takes exactly ${bargc} argument(s) (line ${e.line})')
 		}
@@ -601,6 +627,10 @@ fn builtin_result_type(name string) TypeInfo {
 		// stdlib: JSON + string formatting
 		'json_encode', 'format', 'replace', 'pad', 'pad_left', 'repeat' { TypeInfo{ kind: .string_t } }
 		'json_decode', 'split_lines' { TypeInfo{ kind: .unknown } }
+		'sb_new', 'sb_add', 'sb_str' { TypeInfo{ kind: .string_t } }
+		'sb_len' { TypeInfo{ kind: .int_t } }
+		'spawn' { TypeInfo{ kind: .int_t } }
+		'spawn_join' { TypeInfo{ kind: .unknown } }
 		'cwd', 'json_pretty' { TypeInfo{ kind: .string_t } }
 		'build_is_dir' { TypeInfo{ kind: .int_t } }
 		// build-module builtins (.vrmm)

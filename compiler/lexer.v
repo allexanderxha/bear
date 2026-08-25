@@ -285,6 +285,7 @@ fn (mut l Lexer) lex_ident(line int, col int) Tok {
 		'fn' { TokKind.kw_fn }
 		'struct' { TokKind.kw_struct }
 		'let' { TokKind.kw_let }
+		'mut' { TokKind.kw_mut }
 		'if' { TokKind.kw_if }
 		'else' { TokKind.kw_else }
 		'while' { TokKind.kw_while }

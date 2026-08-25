@@ -70,3 +70,19 @@ fn capitalize(s) {
 	}
 	return upper(s[0]) + s[1..]
 }
+
+// builder returns a fresh string builder. Append pieces with build_add and
+// materialize once with build_str — O(n) total instead of O(n^2) for a long
+// chain of `+`. The same functions are available unqualified as sb_new,
+// sb_add, sb_str (used internally by this module's builtin-backed helpers).
+fn builder() {
+	return sb_new()
+}
+
+fn build_add(sb, piece) {
+	return sb_add(sb, piece)
+}
+
+fn build_str(sb) {
+	return sb_str(sb)
+}

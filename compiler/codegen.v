@@ -45,6 +45,7 @@ mut:
 	enter_off u32
 	next_lbl  int
 	modules   map[string]bool // imported module names (bare `import os`)
+	fn_names  map[string]bool // top-level function names usable as closure values
 	captures  []string        // enclosing locals captured by the closure being compiled
 }
 
@@ -117,6 +118,10 @@ fn gen(prog Program) !obj.Obj {
 			}
 			g.relocs << obj.Reloc{ offset: u32(code_off) + r.offset, name: rname, kind: r.kind }
 		}
+		// record imported function names so a bare name can be used as a value
+		for s in imported.symbols {
+			g.fn_names[s.name] = true
+		}
 		// merge debug info, rebasing offsets into this object's code space
 		for l in imported.lines {
 			g.lines << obj.LineInfo{ off: u32(code_off) + l.off, line: l.line }
@@ -126,6 +131,9 @@ fn gen(prog Program) !obj.Obj {
 		for l in imported.locals {
 			g.dbg_locals << obj.DbgLocal{ fn: prefix + l.fn, name: l.name, slot: l.slot }
 		}
+	}
+	for fd in prog.fns {
+		g.fn_names[fd.name] = true
 	}
 	for fd in prog.fns {
 		g.captures = []string{} // top-level functions capture nothing
@@ -800,12 +808,20 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 				// check if it's an enum variant (e.g., Color.red)
 				g.code << op_push_i
 				g.code << obj.encode_i64(i64(g.enum_vals[e.name]))
-			} else {
-				idx := g.locals[e.name] or {
-					return error('unknown variable "${e.name}" at line ${e.line}')
-				}
+			} else if e.name in g.locals {
+				idx := g.locals[e.name]
 				g.code << op_load
 				g.code << obj.encode_i64(i64(idx))
+			} else if e.name in g.fn_names {
+				// a bare top-level function name used as a value (e.g. the first
+				// argument of `spawn`) — emit a zero-capture closure whose entry
+				// is resolved by the linker.
+				g.code << op_closure
+				g.code << obj.encode_i64(0)
+				g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: e.name, kind: 0 }
+				g.code << obj.encode_i64(0) // no captured locals
+			} else {
+				return error('unknown variable "${e.name}" at line ${e.line}')
 			}
 		}
 		.unary {
@@ -911,6 +927,20 @@ fn (mut g Gen) gen_call(e Expr) ! {
 	// host builtins (file I/O, OS, math, collections) go through op_native
 	bid, bargc := builtin_spec(e.name)
 	if bid >= 0 {
+		// spawn takes a variable number of arguments (the function followed by
+		// its call arguments), so emit the real argc rather than the spec's
+		if e.name == 'spawn' {
+			if e.args.len < 1 {
+				return error('spawn expects a function plus zero or more arguments (line ${e.line})')
+			}
+			for a in e.args {
+				g.gen_expr(a)!
+			}
+			g.code << op_native
+			g.code << obj.encode_i64(i64(bid))
+			g.code << obj.encode_i64(i64(e.args.len))
+			return
+		}
 		if e.args.len != bargc {
 			return error('${e.name}() takes exactly ${bargc} argument(s) (line ${e.line})')
 		}
@@ -1002,6 +1032,14 @@ fn builtin_spec(name string) (int, int) {
 		'pad' { native_pad, 2 }
 		'pad_left' { native_pad_left, 2 }
 		'repeat' { native_repeat, 2 }
+		// string builder
+		'sb_new' { native_sb_new, 0 }
+		'sb_add' { native_sb_add, 2 }
+		'sb_str' { native_sb_str, 1 }
+		'sb_len' { native_sb_len, 1 }
+		// concurrency
+		'spawn' { native_spawn, 1 }
+		'spawn_join' { native_spawn_join, 1 }
 		'build_is_dir' { native_build_is_dir, 1 }
 		'cwd' { native_cwd, 0 }
 		'json_pretty' { native_json_pretty, 1 }
@@ -1261,7 +1299,8 @@ fn (mut g Gen) expr_type(e Expr) string {
 			'upper', 'lower', 'trim', 'str', 'getenv', 'read_file', 'join' { 'string' }
 			'build_compile', 'build_assemble', 'build_link', 'build_exec', 'build_base',
 			'build_dir', 'build_join', 'build_root' { 'string' }
-			'json_encode', 'format', 'replace', 'pad', 'pad_left', 'repeat' { 'string' }
+			'json_encode', 'format', 'replace', 'pad', 'pad_left', 'repeat', 'sb_new', 'sb_add', 'sb_str' { 'string' }
+			'sb_len' { 'int' }
 			'cwd', 'json_pretty' { 'string' }
 			else { '' }
 		}

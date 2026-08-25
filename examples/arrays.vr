@@ -2,7 +2,7 @@
 // Run with:  vr run examples/arrays.vr
 
 fn sum(items) {
-	let total = 0
+	mut total = 0
 	for x in items {
 		total = total + x
 	}
@@ -79,7 +79,7 @@ fn main() {
 	println("")
 
 	// find the first even number in an array
-	let found = -1
+	mut found = -1
 	for x in a {
 		if x % 2 == 0 {
 			found = x

@@ -171,3 +171,13 @@ const native_path_abs = 185
 const native_path_rel = 186
 const native_exec_full = 187
 const native_weekday = 188
+
+// string builder (efficient repeated concatenation)
+const native_sb_new = 189
+const native_sb_add = 190
+const native_sb_str = 191
+const native_sb_len = 192
+
+// concurrency: spawn/join threads
+const native_spawn = 193
+const native_spawn_join = 194

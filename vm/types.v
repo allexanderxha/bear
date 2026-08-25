@@ -34,6 +34,13 @@ struct Handler {
 	sp int // stack pointer right after the handler record
 }
 
+// StrBuilder accumulates string parts so repeated concatenation stays linear
+// (a `+ cat a + b + c` chain reallocates on every step; a builder joins once).
+struct StrBuilder {
+mut:
+	parts []string
+}
+
 // DbgMode says what the debugger should do after an interactive session ends.
 enum DbgMode {
 	run // keep going until the next breakpoint (or the end)
@@ -66,6 +73,8 @@ mut:
 	structs    []StructVal
 	floats     []f64
 	closures   []Closure
+	builders   []StrBuilder
+	jobs       []Job
 	stack      []i64
 	sp         int
 	bp         int
@@ -79,6 +88,7 @@ mut:
 	lines      []obj.LineInfo // debug info: code offset -> source line
 	fns        []obj.BinFn    // function table (for stack traces)
 	const_strs int            // strings[0..const_strs] are bytecode constants, never collected
+	bin        obj.Bin        // the linked program (kept so spawn() can build isolated child VMs)
 	last_heap  int            // heap size at the last GC check (allocation trigger)
 	build_root string         // directory of the .vrmm build module (build_root() builtin)
 	dbg        DbgState       // interactive debugger state (vr debug)

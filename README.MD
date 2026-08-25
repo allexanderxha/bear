@@ -326,7 +326,19 @@ fn main() {
 - generics: `fn first[T](arr) { return arr[0] }` with checked call sites
   `first[int](arr)` — the VM is dynamically typed, so type parameters erase
   to a single function but arity and duplicates are validated
-- variables: `let name = expr`, reassignment `name = expr`
+- variables: `let name = expr` binds **immutably** (reassignment is a
+  compile-time error); declare `mut name = expr` to opt in to reassignment
+  `name = expr`. Loop variables, function parameters, and the receiver are
+  always reassignable, as are element/field writes (`a[i] = v`, `s.f = v`)
+- string builders: `strings.builder()` / `strings.build_add(sb, piece)` /
+  `strings.build_str(sb)` (also unqualified `sb_new` / `sb_add` / `sb_str`)
+  accumulate many pieces and materialize once — O(n) instead of the O(n²)
+  of a long `+` chain
+- concurrency: `spawn(fn, args...)` runs the closure on its own OS thread in
+  an isolated VM (captured values and args are deep-copied) and returns a job
+  id; `spawn_join(id)` blocks until the job finishes and returns its result
+  (int/float/string, or a flat array/struct rendered as its string form).
+  Jobs run truly in parallel and their failures propagate as catchable errors
 - floats: `3.14`, `0.5`, `1e3` — float literals and `float(x)`; arithmetic
   promotes to float; `floor` / `ceil` / `round` / `sqrt` / `pow` / `abs` /
   `min` / `max` / `rand` / `rand_int`
