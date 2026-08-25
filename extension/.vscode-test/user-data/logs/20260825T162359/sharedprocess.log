@@ -1,1 +1,0 @@
-2026-08-25 16:23:59.920 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/extensions for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.

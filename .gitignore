@@ -3,3 +3,4 @@ bin/vr
 *.vbin
 node_modules/
 *.vsix
+.vscode-test
