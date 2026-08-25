@@ -552,6 +552,12 @@ fn builtin_result_type(name string) TypeInfo {
 		'args', 'keys' { TypeInfo{ kind: .array_t } }
 		'len' { TypeInfo{ kind: .int_t } }
 		'write_file', 'setenv', 'exit', 'sleep', 'eprint' { TypeInfo{ kind: .unknown } }
+		// build-module builtins (.vrmm)
+		'build_compile', 'build_assemble', 'build_link', 'build_exec', 'build_base',
+		'build_dir', 'build_join', 'build_root' { TypeInfo{ kind: .string_t } }
+		'build_glob', 'build_ls' { TypeInfo{ kind: .array_t } }
+		'build_run', 'build_test', 'build_bench', 'build_clean', 'build_exec_status',
+		'build_exists', 'build_mkdir', 'build_rm', 'build_copy' { TypeInfo{ kind: .int_t } }
 		else { TypeInfo{ kind: .unknown } }
 	}
 }

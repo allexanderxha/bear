@@ -1,0 +1,13 @@
+// debug: trace function execution
+
+fn first[T](arr) {
+    let x = arr[0]
+    println(x)
+    return x
+}
+
+fn main() {
+    let nums = [10, 20, 30]
+    let x = first(nums)
+    println("main got: ${x}")
+}

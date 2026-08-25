@@ -24,7 +24,29 @@ fn toolchain_init(args []string) ! {
 	if !os.exists('main.vr') {
 		os.write_file('main.vr', 'fn main() {\n\tprintln("hello from ${pkg}")\n}\n')!
 	}
-	println('initialized project "${pkg}" (${manifest_file}, main.vr)')
+	if !os.exists('build.vrmm') {
+		os.write_file('build.vrmm', '// build.vrmm — build instructions for the VuurRaaf toolchain.
+//
+//   vr make           runs main()
+//   vr make clean     runs the clean() target
+//
+// Build builtins: build_compile, build_assemble, build_link, build_run,
+// build_test, build_bench, build_clean, build_exec, build_exec_status,
+// build_exists, build_mkdir, build_rm, build_copy, build_glob, build_ls,
+// build_base, build_dir, build_join, build_root.
+
+fn main() {
+	build_compile("main.vr", "main.vobj")
+	build_link(["main.vobj"], "main.vbin")
+	println("built main.vbin — run it with: vr run main.vbin")
+}
+
+fn clean() {
+	build_clean()
+}
+')!
+	}
+	println('initialized project "${pkg}" (${manifest_file}, main.vr, build.vrmm)')
 }
 
 fn toolchain_get(args []string) ! {

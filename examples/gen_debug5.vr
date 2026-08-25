@@ -1,0 +1,12 @@
+// debug: test arr[0] in function body
+
+fn first(arr) {
+    println(arr[0])
+    return arr[0]
+}
+
+fn main() {
+    let nums = [10, 20, 30]
+    let result = first(nums)
+    println("result = ${result}")
+}

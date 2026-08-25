@@ -49,6 +49,7 @@ mut:
 	lines     []obj.LineInfo // debug info: code offset -> source line
 	const_strs int          // strings[0..const_strs] are bytecode constants, never collected
 	last_heap  int          // heap size at the last GC check (allocation trigger)
+	build_root string       // directory of the .vrmm build module (build_root() builtin)
 }
 
 fn bool_i64(b bool) i64 {

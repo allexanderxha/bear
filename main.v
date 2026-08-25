@@ -91,6 +91,9 @@ fn main() {
 		'clean' {
 			toolchain_clean()
 		}
+		'make', 'm', 'build' {
+			toolchain_make(rest) or { die('make', err) }
+		}
 		'up' {
 			toolchain_up() or { die('up', err) }
 		}
@@ -177,6 +180,9 @@ fn toolchain_help() {
 	println('  get <owner/repo | url | ./path>          fetch a package into vendor/')
 	println('  install                                  install deps from vr.mod')
 	println('  list                                     show the project manifest')
+	println('  make [target] [args...]                  run build.vrmm (target = main)')
+	println('  make -f <file.vrmm> [target] [args...]   run another build module (.vrmm)')
+	println('  build                                    alias for make')
 	println('  clean                                    remove build artifacts')
 	println('  up                                       rebuild the vr binary into bin/')
 	println('  symlink                                  link bin/vr into your PATH')
@@ -467,6 +473,73 @@ fn run_src_with_args(src string, entry string, trace bool, args []string) ! {
 
 // ---------------------------------------------------------------------------
 // housekeeping
+
+// ---------------------------------------------------------------------------
+// make — run a .vrmm build module
+
+// toolchain_make compiles a .vrmm build module and runs one of its targets.
+// A build module is a VuurRaaf program that drives the toolchain through the
+// build_* builtins (build_compile, build_link, build_run, build_exec, ...).
+//
+//   vr make                 runs main() (or build()) from build.vrmm
+//   vr make clean           runs the clean() target
+//   vr make deploy --prod   runs deploy() with args() == ["--prod"]
+//   vr make -f x.vrmm t     runs target t from x.vrmm
+//
+// A target that returns nonzero (or calls exit(n>0) / throws) fails the build.
+fn toolchain_make(args []string) ! {
+	mut file := 'build.vrmm'
+	mut rest := []string{}
+	mut i := 0
+	for i < args.len {
+		if args[i] == '-f' && i + 1 < args.len {
+			file = args[i + 1]
+			i += 2
+		} else {
+			rest << args[i]
+			i++
+		}
+	}
+	if !os.exists(file) {
+		return error('no build module "${file}" found (write one, or run `vr init` to scaffold it)')
+	}
+	mut target := 'main'
+	if rest.len > 0 {
+		target = rest[0]
+		rest = rest[1..].clone()
+	}
+	// compile and link the build module itself
+	tmp_obj := os.join_path(os.temp_dir(), 'vr_make_${os.getpid()}.vobj')
+	tmp_bin := os.join_path(os.temp_dir(), 'vr_make_${os.getpid()}.vbin')
+	defer {
+		os.rm(tmp_obj) or {}
+		os.rm(tmp_bin) or {}
+	}
+	o := compiler.compile_file(file)!
+	obj.write(tmp_obj, o)!
+	linker.link([tmp_obj], tmp_bin)!
+	bin := obj.read_bin(tmp_bin)!
+	// pick the entry: an explicit target, else main, else build
+	mut names := []string{}
+	for f in bin.fns {
+		names << f.name
+	}
+	mut entry := ''
+	if target == 'main' && 'main' in names {
+		entry = 'main'
+	} else if target == 'main' && 'build' in names {
+		entry = 'build'
+	} else if target in names {
+		entry = target
+	} else {
+		return error('no target function "${target}" in ${file} (available: ${names.join(', ')} or main)')
+	}
+	println('vr make: ${file} [${entry}]')
+	code := vm.run_build(bin, entry, rest, os.abs_path(os.dir(file)))!
+	if code != 0 {
+		return error('target ${entry} finished with exit code ${code}')
+	}
+}
 
 fn toolchain_clean() {
 	mut n := 0

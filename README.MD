@@ -33,6 +33,9 @@ vr run <file.vr|file.vbin>                  compile+link+run, or run a binary
 vr debug <file.vr|file.vbin>                run with an instruction trace
 vr test <file.vr>                           run every test_* function
 vr bench <file.vr> [iterations]             benchmark main()
+vr make [target] [args...]                  run build.vrmm (target = main)
+vr make -f <file.vrmm> [target] [args...]   run another build module
+vr build [target] [args...]                 alias for make
 vr clean                                    remove .vobj/.vbin artifacts
 vr up                                       rebuild bin/vr
 vr symlink                                  link bin/vr into your PATH
@@ -70,6 +73,64 @@ Quick start:
 ./bin/vr link lib.vobj use_lib.vobj -o use_lib.vbin
 ./bin/vr run use_lib.vbin
 ```
+
+## Build modules (.vrmm)
+
+A **VuurRaaf Make Module** (`.vrmm`) is build instructions for the toolchain,
+written in VuurRaaf itself — the same idea as V's `.vsh` scripts. The toolchain
+compiles the module and runs one of its functions (a *target*) with the
+`build_*` builtins available, so the script can drive every stage of the
+pipeline: compile, assemble, link, run, test, bench, clean, and shell out to
+the host.
+
+```
+# build.vrmm
+fn main() {
+    build_compile("main.vr", "main.vobj")
+    build_link(["main.vobj"], "main.vbin")
+}
+
+fn clean() {
+    build_clean()
+}
+```
+
+```bash
+vr make              # runs main() from build.vrmm
+vr make clean        # runs the clean() target
+vr make deploy --prod  # runs deploy() with args() == ["--prod"]
+vr make -f x.vrmm t  # run target t from another module
+```
+
+A target that returns a nonzero integer, calls `exit(n)` with `n > 0`, or
+`throw`s fails the build. Paths are relative to the working directory;
+`build_root()` returns the module's own directory for absolute paths.
+
+Build builtins:
+
+| builtin | description |
+|---------|-------------|
+| `build_compile(src, out)` | source → object (out defaults to `src.vobj`); returns the out path |
+| `build_assemble(src, out)` | `.vasm` → object; returns the out path |
+| `build_link(objs, out)` | objects → executable; returns the out path |
+| `build_run(file)` | compile+link+run a `.vr`, or run a `.vbin`; returns the exit code |
+| `build_test(file)` | run every `test_*` function; throws if any fail |
+| `build_bench(file, n)` | benchmark `main()` n times |
+| `build_clean()` | remove `.vobj`/`.vbin` in the cwd; returns the count |
+| `build_exec(cmd)` | run a shell command; returns its output (throws on nonzero exit) |
+| `build_exec_status(cmd)` | run a shell command; returns its exit code |
+| `build_exists(path)` | 1 if the path exists, else 0 |
+| `build_mkdir(path)` | create a directory (and parents) |
+| `build_rm(path)` | remove a file or directory tree; returns 1 if something was removed |
+| `build_copy(src, dst)` | copy a file or a whole directory tree |
+| `build_glob(pattern)` | list files matching a glob (e.g. `"src/*.vr"`) |
+| `build_ls(dir)` | list a directory's entries |
+| `build_base(path)` / `build_dir(path)` / `build_join(a, b)` | path helpers |
+| `build_root()` | absolute directory of the running `.vrmm` |
+
+`vr init` scaffolds a project with a working `build.vrmm`; see
+`examples/build.vrmm` for a tour (targets: `main`, `multi`, `test`, `bench`,
+`deploy`, `clean`).
 
 ## The VuurRaaf language
 
@@ -261,6 +322,7 @@ main.v               CLI entry point (vr <command> ...)
 repl.v               interactive REPL
 fmt.v                source formatter
 pkg.v                package manager (init/get/install/list)
+vm/native.v          host builtins incl. the build_* (.vrmm) builtins
 v.mod                module definition
 compiler/ assembler/ linker/ vm/ obj/   the toolchain itself
 bin/                 built binary + standalone tools

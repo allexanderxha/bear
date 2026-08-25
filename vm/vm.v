@@ -17,6 +17,17 @@ pub fn run(bin obj.Bin, entry string, trace bool) !i64 {
 // run_with_args is run() with command-line arguments exposed to the program
 // via the `args()` builtin.
 pub fn run_with_args(bin obj.Bin, entry string, trace bool, args []string) !i64 {
+	return run_internal(bin, entry, trace, args, '')!
+}
+
+// run_build executes a .vrmm build module: the entry target receives the
+// extra CLI arguments via `args()`, and `build_root()` reports the module's
+// own directory so scripts can find files regardless of the working directory.
+pub fn run_build(bin obj.Bin, entry string, args []string, root string) !i64 {
+	return run_internal(bin, entry, false, args, root)!
+}
+
+fn run_internal(bin obj.Bin, entry string, trace bool, args []string, root string) !i64 {
 	mut v := Vm{
 		code:       bin.code
 		strings:    bin.strings.clone()
@@ -25,6 +36,7 @@ pub fn run_with_args(bin obj.Bin, entry string, trace bool, args []string) !i64 
 		prog_args:  args
 		lines:      bin.lines
 		const_strs: bin.strings.len
+		build_root: root
 	}
 	mut entry_ip := -1
 	for f in bin.fns {

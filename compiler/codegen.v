@@ -903,6 +903,26 @@ fn builtin_spec(name string) (int, int) {
 		'read_file' { native_read_file, 1 }
 		'write_file' { native_write_file, 2 }
 		'eprint' { native_eprint, 1 }
+		// build-module builtins (.vrmm) — see vm/native.v
+		'build_compile' { native_build_compile, 2 }
+		'build_assemble' { native_build_assemble, 2 }
+		'build_link' { native_build_link, 2 }
+		'build_run' { native_build_run, 1 }
+		'build_test' { native_build_test, 1 }
+		'build_bench' { native_build_bench, 2 }
+		'build_clean' { native_build_clean, 0 }
+		'build_exec' { native_build_exec, 1 }
+		'build_exec_status' { native_build_exec_status, 1 }
+		'build_exists' { native_build_exists, 1 }
+		'build_mkdir' { native_build_mkdir, 1 }
+		'build_rm' { native_build_rm, 1 }
+		'build_copy' { native_build_copy, 2 }
+		'build_glob' { native_build_glob, 1 }
+		'build_ls' { native_build_ls, 1 }
+		'build_base' { native_build_base, 1 }
+		'build_dir' { native_build_dir, 1 }
+		'build_join' { native_build_join, 2 }
+		'build_root' { native_build_root, 0 }
 		else { -1, 0 }
 	}
 }
@@ -1131,6 +1151,8 @@ fn (mut g Gen) expr_type(e Expr) string {
 	if e.kind == .call {
 		return match e.name {
 			'upper', 'lower', 'trim', 'str', 'getenv', 'read_file', 'join' { 'string' }
+			'build_compile', 'build_assemble', 'build_link', 'build_exec', 'build_base',
+			'build_dir', 'build_join', 'build_root' { 'string' }
 			else { '' }
 		}
 	}

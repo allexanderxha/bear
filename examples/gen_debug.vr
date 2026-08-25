@@ -1,0 +1,9 @@
+// debug: does the function work at all?
+
+fn double(x) {
+    return x * 2
+}
+
+fn main() {
+    println(double(21))
+}

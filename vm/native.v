@@ -11,6 +11,10 @@ import os
 import math
 import rand
 import time
+import obj
+import compiler
+import assembler
+import linker
 
 fn (mut v Vm) native(id int, _argc int) ! {
 	match id {
@@ -346,8 +350,256 @@ fn (mut v Vm) native(id int, _argc int) ! {
 			x := v.pop()!
 			eprintln(v.val_str(x, 0))
 		}
+		// -------------------------------------------------------------------
+		// build-module builtins (.vrmm) — these let a VuurRaaf program drive
+		// the toolchain itself, the way V's .vsh scripts drive `v build`.
+		native_build_compile {
+			out := v.pop_str()!
+			src := v.pop_str()!
+			o := compiler.compile_file(src) or { return error('build_compile: ${err.msg()}') }
+			o_path := if out.len == 0 { src.all_before_last('.') + '.vobj' } else { out }
+			obj.write(o_path, o) or { return error('build_compile: cannot write ${o_path}: ${err.msg()}') }
+			println('compiled ${src} -> ${o_path} (${o.code.len} bytes code, ${o.symbols.len} symbols)')
+			v.push(v.alloc_str(o_path))!
+		}
+		native_build_assemble {
+			out := v.pop_str()!
+			src := v.pop_str()!
+			o := assembler.assemble_file(src) or { return error('build_assemble: ${err.msg()}') }
+			o_path := if out.len == 0 { src.all_before_last('.') + '.vobj' } else { out }
+			obj.write(o_path, o) or { return error('build_assemble: cannot write ${o_path}: ${err.msg()}') }
+			println('assembled ${src} -> ${o_path} (${o.code.len} bytes code)')
+			v.push(v.alloc_str(o_path))!
+		}
+		native_build_link {
+			out := v.pop_str()!
+			h := v.pop()!
+			if !v.is_arr(h) || !v.valid_arr_handle(h) {
+				return error('build_link() expects an array of object files as its first argument')
+			}
+			mut objs := []string{}
+			for x in v.arrays[v.hand(h)] {
+				if !v.is_str(x) || !v.valid_handle(x) {
+					return error('build_link() expects string paths inside the object array')
+				}
+				objs << v.strings[v.hand(x)]
+			}
+			if objs.len == 0 {
+				return error('build_link() needs at least one object file')
+			}
+			o_path := if out.len == 0 { os.base(objs[0]).all_before_last('.') + '.vbin' } else { out }
+			linker.link(objs, o_path) or { return error('build_link: ${err.msg()}') }
+			println('linked ${objs.len} object file(s) -> ${o_path}')
+			v.push(v.alloc_str(o_path))!
+		}
+		native_build_run {
+			f := v.pop_str()!
+			if f.ends_with('.vbin') {
+				bin := obj.read_bin(f) or { return error('build_run: ${err.msg()}') }
+				code := run_with_args(bin, 'main', false, []string{}) or {
+					return error('build_run: ${err.msg()}')
+				}
+				v.push(v.enc_int(code))!
+				return
+			}
+			if !f.ends_with('.vr') {
+				return error('build_run() expects a .vr or .vbin file')
+			}
+			tmp_obj := os.join_path(os.temp_dir(), 'vr_build_${os.getpid()}.vobj')
+			tmp_bin := os.join_path(os.temp_dir(), 'vr_build_${os.getpid()}.vbin')
+			defer {
+				os.rm(tmp_obj) or {}
+				os.rm(tmp_bin) or {}
+			}
+			o := compiler.compile_file(f) or { return error('build_run: ${err.msg()}') }
+			obj.write(tmp_obj, o) or { return error('build_run: ${err.msg()}') }
+			linker.link([tmp_obj], tmp_bin) or { return error('build_run: ${err.msg()}') }
+			bin := obj.read_bin(tmp_bin) or { return error('build_run: ${err.msg()}') }
+			code := run_with_args(bin, 'main', false, []string{}) or {
+				return error('build_run: ${err.msg()}')
+			}
+			v.push(v.enc_int(code))!
+		}
+		native_build_test {
+			src := v.pop_str()!
+			o := compiler.compile_file(src) or { return error('build_test: ${err.msg()}') }
+			mut tests := []string{}
+			for s in o.symbols {
+				if s.name.starts_with('test_') {
+					tests << s.name
+				}
+			}
+			if tests.len == 0 {
+				return error('build_test: no test_* functions found in ${src}')
+			}
+			tmp_obj := os.join_path(os.temp_dir(), 'vr_build_${os.getpid()}.vobj')
+			tmp_bin := os.join_path(os.temp_dir(), 'vr_build_${os.getpid()}.vbin')
+			defer {
+				os.rm(tmp_obj) or {}
+				os.rm(tmp_bin) or {}
+			}
+			obj.write(tmp_obj, o) or { return error('build_test: ${err.msg()}') }
+			linker.link([tmp_obj], tmp_bin) or { return error('build_test: ${err.msg()}') }
+			bin := obj.read_bin(tmp_bin) or { return error('build_test: ${err.msg()}') }
+			mut passes := 0
+			mut fails := 0
+			for t in tests {
+				run(bin, t, false) or {
+					eprintln('  FAIL  ${t}  —  ${err}')
+					fails++
+					continue
+				}
+				println('  PASS  ${t}')
+				passes++
+			}
+			if fails > 0 {
+				return error('build_test: ${fails} of ${tests.len} test(s) failed in ${src}')
+			}
+			println('${passes} test(s) passed')
+			v.push(v.enc_int(i64(passes)))!
+		}
+		native_build_bench {
+			n := int(v.dec_int(v.pop()!))
+			src := v.pop_str()!
+			if n < 1 {
+				return error('build_bench() expects a positive iteration count')
+			}
+			tmp_obj := os.join_path(os.temp_dir(), 'vr_build_${os.getpid()}.vobj')
+			tmp_bin := os.join_path(os.temp_dir(), 'vr_build_${os.getpid()}.vbin')
+			defer {
+				os.rm(tmp_obj) or {}
+				os.rm(tmp_bin) or {}
+			}
+			o := compiler.compile_file(src) or { return error('build_bench: ${err.msg()}') }
+			obj.write(tmp_obj, o) or { return error('build_bench: ${err.msg()}') }
+			linker.link([tmp_obj], tmp_bin) or { return error('build_bench: ${err.msg()}') }
+			bin := obj.read_bin(tmp_bin) or { return error('build_bench: ${err.msg()}') }
+			start := time.now().unix_milli()
+			for _ in 0..n {
+				run(bin, 'main', false) or { return error('build_bench: ${err.msg()}') }
+			}
+			ms := time.now().unix_milli() - start
+			rate := if ms > 0 { f64(n) / (f64(ms) / 1000.0) } else { f64(0) }
+			println('bench: ${n} runs of main() in ${ms}ms (${rate:.0} runs/s)')
+			v.push(v.enc_int(0))!
+		}
+		native_build_clean {
+			mut n := 0
+			if files := os.ls('.') {
+				for f in files {
+					if f.ends_with('.vobj') || f.ends_with('.vbin') {
+						os.rm(f) or {}
+						n++
+					}
+				}
+			}
+			println('cleaned ${n} artifact(s)')
+			v.push(v.enc_int(i64(n)))!
+		}
+		native_build_exec {
+			cmd := v.pop_str()!
+			res := os.execute(cmd)
+			if res.exit_code != 0 {
+				return error('build_exec: "${cmd}" failed with exit code ${res.exit_code}: ${res.output}')
+			}
+			v.push(v.alloc_str(res.output))!
+		}
+		native_build_exec_status {
+			cmd := v.pop_str()!
+			res := os.execute(cmd)
+			v.push(v.enc_int(i64(res.exit_code)))!
+		}
+		native_build_exists {
+			p := v.pop_str()!
+			v.push(v.enc_int(bool_i64(os.exists(p))))!
+		}
+		native_build_mkdir {
+			p := v.pop_str()!
+			os.mkdir_all(p) or { return error('build_mkdir: cannot create ${p}: ${err.msg()}') }
+			v.push(v.enc_int(0))!
+		}
+		native_build_rm {
+			p := v.pop_str()!
+			if !os.exists(p) {
+				v.push(v.enc_int(0))!
+				return
+			}
+			if os.is_dir(p) {
+				os.rmdir_all(p) or { return error('build_rm: cannot remove ${p}: ${err.msg()}') }
+			} else {
+				os.rm(p) or { return error('build_rm: cannot remove ${p}: ${err.msg()}') }
+			}
+			v.push(v.enc_int(1))!
+		}
+		native_build_copy {
+			dst := v.pop_str()!
+			src := v.pop_str()!
+			if os.is_dir(src) {
+				v.copy_tree(src, dst) or { return error('build_copy: ${err.msg()}') }
+			} else {
+				os.cp(src, dst, os.CopyParams{}) or {
+					return error('build_copy: cannot copy ${src} -> ${dst}: ${err.msg()}')
+				}
+			}
+			v.push(v.enc_int(0))!
+		}
+		native_build_glob {
+			pat := v.pop_str()!
+			files := os.glob(pat) or { return error('build_glob: ${err.msg()}') }
+			mut arr := []i64{}
+			for f in files {
+				v.strings << f
+				arr << v.mkstr(v.strings.len - 1)
+			}
+			v.arrays << arr
+			v.push(v.mkarr(v.arrays.len - 1))!
+		}
+		native_build_ls {
+			dir := v.pop_str()!
+			entries := os.ls(dir) or { return error('build_ls: cannot read ${dir}: ${err.msg()}') }
+			mut arr := []i64{}
+			for f in entries {
+				v.strings << f
+				arr << v.mkstr(v.strings.len - 1)
+			}
+			v.arrays << arr
+			v.push(v.mkarr(v.arrays.len - 1))!
+		}
+		native_build_base {
+			p := v.pop_str()!
+			v.push(v.alloc_str(os.base(p)))!
+		}
+		native_build_dir {
+			p := v.pop_str()!
+			v.push(v.alloc_str(os.dir(p)))!
+		}
+		native_build_join {
+			b := v.pop_str()!
+			a := v.pop_str()!
+			v.push(v.alloc_str(os.join_path(a, b)))!
+		}
+		native_build_root {
+			v.push(v.alloc_str(v.build_root))!
+		}
 		else {
 			return error('unknown native builtin ${id}')
+		}
+	}
+}
+
+// copy_tree recursively copies a directory tree (used by build_copy).
+fn (mut v Vm) copy_tree(src string, dst string) ! {
+	if !os.is_dir(src) {
+		return error('${src} is not a directory')
+	}
+	os.mkdir_all(dst) or { return error('cannot create ${dst}: ${err.msg()}') }
+	for entry in os.ls(src) or { return error('cannot read ${src}: ${err.msg()}') } {
+		sp := os.join_path(src, entry)
+		dp := os.join_path(dst, entry)
+		if os.is_dir(sp) {
+			v.copy_tree(sp, dp)!
+		} else if os.is_file(sp) {
+			os.cp(sp, dp, os.CopyParams{}) or { return error('cannot copy ${sp}: ${err.msg()}') }
 		}
 	}
 }

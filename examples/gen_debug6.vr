@@ -1,0 +1,10 @@
+// debug: basic arr[0]
+
+fn get_first(arr) {
+    return arr[0]
+}
+
+fn main() {
+    let nums = [10, 20, 30]
+    println(get_first(nums))
+}

@@ -105,3 +105,24 @@ const native_sleep = 134
 const native_read_file = 135
 const native_write_file = 136
 const native_eprint = 137
+
+// build-module builtins (.vrmm) — driven by `vr make`
+const native_build_compile = 138
+const native_build_assemble = 139
+const native_build_link = 140
+const native_build_run = 141
+const native_build_test = 142
+const native_build_bench = 143
+const native_build_clean = 144
+const native_build_exec = 145
+const native_build_exec_status = 146
+const native_build_exists = 147
+const native_build_mkdir = 148
+const native_build_rm = 149
+const native_build_copy = 150
+const native_build_glob = 151
+const native_build_ls = 152
+const native_build_base = 153
+const native_build_dir = 154
+const native_build_join = 155
+const native_build_root = 156
