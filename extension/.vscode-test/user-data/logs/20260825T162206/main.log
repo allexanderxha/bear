@@ -1,0 +1,16 @@
+2026-08-25 16:22:06.952 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/user-data/User for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:22:06.955 [info] StorageMainService: creating application shared storage
+2026-08-25 16:22:07.179 [info] [shared storage] Creating shared storage database at ':memory:' (wasCreated: true)
+2026-08-25 16:22:07.181 [info] [shared storage] Initializing fallback application storage (path: in-memory)
+2026-08-25 16:22:07.304 [info] [shared storage] Fallback application storage initialized with 3 items
+2026-08-25 16:22:07.304 [info] update#setState disabled
+2026-08-25 16:22:07.304 [info] update#ctor - updates are disabled by the environment
+2026-08-25 16:22:08.684 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/user-data/User for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:22:08.732 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/extensions for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:22:08.737 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/extensions/extensions.json for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:22:09.902 [info] AgentHostProcessManager: agent host started
+2026-08-25 16:22:10.216 [error] [AgentHost:stderr] (node:1722) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `Code Helper --trace-deprecation ...` to show where the warning was created)
+
+2026-08-25 16:22:11.112 [info] Extension host with pid 1724 exited with code: 0, signal: unknown.
+2026-08-25 16:22:12.106 [error] AgentHostStarter: cannot create window connection: Agent Host process manager is shutting down.

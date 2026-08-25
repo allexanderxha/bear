@@ -1,0 +1,9 @@
+fn helper(x) {
+	return x * 2
+}
+
+fn main() {
+	let y = helper(21)
+	println(y)
+	println(unknown_var)
+}

@@ -1,0 +1,14 @@
+2026-08-25 16:22:36.840 [info] [main] Log level: Info
+2026-08-25 16:22:36.840 [info] [main] Validating found git in: "/opt/homebrew/bin/git"
+2026-08-25 16:22:36.866 [info] [main] Using git "2.55.0" from "/opt/homebrew/bin/git"
+2026-08-25 16:22:36.866 [info] [Model][doInitialScan] Initial repository scan started
+2026-08-25 16:22:36.924 [info] > git rev-parse --show-toplevel [14ms]
+2026-08-25 16:22:36.936 [info] > git rev-parse --show-toplevel [9ms]
+2026-08-25 16:22:36.946 [info] > git rev-parse --show-toplevel [9ms]
+2026-08-25 16:22:36.947 [info] [Model][doInitialScan] Initial repository scan completed - repositories (0), closed repositories (0), parent repositories (1), unsafe repositories (0)
+2026-08-25 16:22:36.957 [info] > git rev-parse --show-toplevel [9ms]
+2026-08-25 16:22:36.966 [info] > git rev-parse --show-toplevel [8ms]
+2026-08-25 16:22:37.002 [info] > git rev-parse --show-toplevel [7ms]
+2026-08-25 16:22:37.980 [info] > git rev-parse --show-toplevel [8ms]
+2026-08-25 16:22:38.858 [info] > git rev-parse --show-toplevel [7ms]
+2026-08-25 16:22:39.710 [info] > git rev-parse --show-toplevel [9ms]

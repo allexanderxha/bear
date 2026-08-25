@@ -50,12 +50,16 @@
 		}
 	},
 	"scripts": {
-		"vscode:prepublish": "npm install"
+		"vscode:prepublish": "npm install",
+		"test": "node ./test/runTest.js",
+		"package": "vsce package"
 	},
 	"dependencies": {
 		"vscode-languageclient": "^8.1.0"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.75.0"
+		"@types/vscode": "^1.75.0",
+		"@vscode/test-electron": "^2.3.9",
+		"mocha": "^10.2.0"
 	}
 }

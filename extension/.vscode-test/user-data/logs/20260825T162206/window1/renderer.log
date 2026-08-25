@@ -1,0 +1,111 @@
+2026-08-25 16:22:07.884 [info] [AgentHost:renderer] Acquiring MessagePort to agent host...
+2026-08-25 16:22:08.000 [info] [ChatModelSelection] event=no-model-at-toolbar-build surface="workbench" sessionKey=undefined conversationKey=undefined modelTarget=undefined storageKey="chat.currentLanguageModel.panel" widgetViewKind="view"
+2026-08-25 16:22:08.159 [info] [ChatModelSelection] event=no-model-at-toolbar-build surface="workbench" sessionKey="local" conversationKey="vscode-chat-session://local/ZjlkMmI5MzUtMTExNC00ZGMxLTkxODUtZDk4OTQ0MTRiNWUz" modelTarget=undefined storageKey="chat.currentLanguageModel.panel" widgetViewKind="view"
+2026-08-25 16:22:08.171 [info] Started initializing default profile extensions in extensions installation folder. file:///Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/extensions
+2026-08-25 16:22:08.367 [info] Completed initializing default profile extensions in extensions installation folder. file:///Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/extensions
+2026-08-25 16:22:08.399 [info] Loading development extension at /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension
+2026-08-25 16:22:08.596 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/user-data/User for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:22:08.596 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/test/fixtures/workspace/.vscode for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:22:08.619 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/test/fixtures/workspace/.vscode/settings.json for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:22:08.906 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/user-data/User/snippets for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:22:09.246 [info] [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false
+2026-08-25 16:22:09.263 [error] Unable to create workbench contribution 'chat.contextContributions'. [createInstance] _St depends on UNKNOWN service chatSessionRoutingProviderService.
+2026-08-25 16:22:09.361 [info] Settings Sync: Account status changed from uninitialized to unavailable
+2026-08-25 16:22:09.444 [info] [ChatModelSelection] event=no-model-at-toolbar-build surface="workbench" sessionKey="local" conversationKey="vscode-chat-session://local/ZjlkMmI5MzUtMTExNC00ZGMxLTkxODUtZDk4OTQ0MTRiNWUz" modelTarget=undefined storageKey="chat.currentLanguageModel.panel" widgetViewKind="view"
+2026-08-25 16:22:09.903 [info] [AgentHost:renderer] MessagePort acquired, creating client...
+2026-08-25 16:22:09.904 [info] Started local extension host with pid 1724.
+2026-08-25 16:22:10.233 [info] [AgentHost:renderer] Protocol connection established; clientId=f595405a-b474-41e7-b09a-89dabc1f2701
+2026-08-25 16:22:10.248 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.249 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.255 [info] [AgentHost] Clearing authentication for resource: https://api.github.com
+2026-08-25 16:22:10.255 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.256 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.256 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.256 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.257 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.259 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.259 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.259 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.260 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.260 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.261 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.261 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.261 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.262 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.262 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.262 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.263 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.263 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.263 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.263 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.263 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.264 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.265 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.265 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.266 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.267 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.268 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.268 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.268 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.268 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.268 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.268 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.281 [info] [AgentHost] Clearing authentication for resource: https://api.github.com/repos
+2026-08-25 16:22:10.355 [info] %s%s  
+2026-08-25 16:22:10.379 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.379 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.379 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.380 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.380 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.380 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.380 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.381 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.381 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.381 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.381 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.382 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.382 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.382 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.382 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.383 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.383 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:22:10.394 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.394 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.394 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.395 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.395 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.395 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.395 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.396 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.396 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.396 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.397 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.397 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.397 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.397 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.398 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.398 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.398 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:22:10.410 [info] %s%s    VuurRaaf extension
+2026-08-25 16:22:10.410 [info]     ✔ %s vuurraaf language (grammar) is registered
+2026-08-25 16:22:10.916 [info] [ChatModelSelection] event=no-model-at-toolbar-build surface="workbench" sessionKey="local" conversationKey="vscode-chat-session://local/ZjlkMmI5MzUtMTExNC00ZGMxLTkxODUtZDk4OTQ0MTRiNWUz" modelTarget=undefined storageKey="chat.currentLanguageModel.panel" widgetViewKind="view"
+2026-08-25 16:22:11.007 [info]     ✔ %s (%dms) language server publishes compiler diagnostics 582
+2026-08-25 16:22:11.015 [info]     ✔ %s go-to-definition jumps to the function declaration
+2026-08-25 16:22:11.025 [info]     ✔ %s hover reports the symbol kind
+2026-08-25 16:22:11.089 [info]     %d) %s 1 go-to-definition resolves stdlib module functions
+2026-08-25 16:22:11.097 [info]   %d passing (%s) 4 744ms
+2026-08-25 16:22:11.097 [info]   %d failing 1
+2026-08-25 16:22:11.098 [info]   %s) %s:
+%s
+%s
+ 1 VuurRaaf extension
+       go-to-definition resolves stdlib module functions 
+      AssertionError [ERR_ASSERTION]: no definition returned for os.exists
+      + expected - actual
+
+      -false
+      +true
+         	at Context.<anonymous> (test/suite/extension.test.js:91:10)
+2026-08-25 16:22:11.098 [error] Error: 1 test(s) failed
+	at /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/test/suite/index.js:15:12
+	at done (/Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/node_modules/mocha/lib/mocha.js:1028:7)

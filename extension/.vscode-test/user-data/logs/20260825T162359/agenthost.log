@@ -1,0 +1,23 @@
+2026-08-25 16:24:00.603 [info] Agent Host process started successfully
+2026-08-25 16:24:00.610 [info] AgentService initialized
+2026-08-25 16:24:00.616 [info] Registering agent provider: copilotcli
+2026-08-25 16:24:00.616 [info] [Copilot] Listing discoverable chats...
+2026-08-25 16:24:00.617 [info] [Copilot] Starting CopilotClient...
+2026-08-25 16:24:00.617 [info] [Copilot] Set CLI env: GITHUB_COPILOT_INTEGRATION_ID=vscode-chat
+2026-08-25 16:24:00.618 [info] Registering agent provider: claude
+2026-08-25 16:24:00.619 [info] [Claude] Models refreshed (merged). Count: 0, 
+2026-08-25 16:24:00.624 [info] [Copilot] Resolved CLI path: /Applications/Visual Studio Code.app/Contents/Resources/app/node_modules.asar.unpacked/@github/copilot-darwin-arm64/index.js
+2026-08-25 16:24:00.628 [info] [ProtocolServer] Initialize: clientId=c9db8215-4a70-46ca-8b56-0add9857071b, protocolVersions=[0.8.0, 0.7.0, 0.6.0, 0.5.2, 0.5.1]
+2026-08-25 16:24:00.691 [warning] [AgentHostFileMonitorService] File watcher error [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/user-data/User for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:24:00.691 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/user-data/User for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:24:00.692 [info] [Claude] Auth token unchanged
+2026-08-25 16:24:00.696 [info] [AgentService] discovery for provider claude: 0 candidate(s) (0 external), 0 registered, 0 already registered, 0 suppressed as subagent/chat backing
+2026-08-25 16:24:00.711 [info] [WebSocketProtocol] Server listening on socket /var/folders/mx/4_mn7pcn2vx4fgdr9jtw7c300000gn/T/vscode-ah-2c8c97e69809/RX4oLGV_3kJ2YgYQzBSr6A.sock
+2026-08-25 16:24:00.718 [info] [CommandAutoApprover] Tree-sitter initialized (bash=available, powershell=available)
+2026-08-25 16:24:01.061 [info] [Copilot] CopilotClient started successfully
+2026-08-25 16:24:01.062 [info] [Copilot] Listed 0 SDK session(s) for discoverable chats
+2026-08-25 16:24:01.062 [info] [Copilot] Chat discovery: 0 SDK session(s) -> 0 external, 0 adoptable legacy extension-host, 0 suppressed adoptable legacy extension-host, 0 already known to Agent Host, 0 without a working directory, 0 with unsupported or missing client name, 0 outside the import window, 0 without repository metadata, 0 failed to classify (adopt legacy extension-host chats: false)
+2026-08-25 16:24:01.062 [info] [Copilot] Chat discovery: emitting 0 of 0 discovered chat(s) (adopt legacy extension-host chats: false)
+2026-08-25 16:24:40.970 [info] [ProtocolServer] Client disconnected: c9db8215-4a70-46ca-8b56-0add9857071b, subscriptions=1
+2026-08-25 16:24:40.971 [info] AgentService: shutting down all providers...
+2026-08-25 16:24:40.971 [info] [Copilot] Shutting down...

@@ -1,0 +1,20 @@
+2026-08-25 16:22:36.697 [info] Extension host with pid 3079 started
+2026-08-25 16:22:36.697 [info] Skipping acquiring lock for /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/user-data/User/workspaceStorage/bf90d78ff434f09f415e242d787eaa31.
+2026-08-25 16:22:36.702 [info] ExtensionService#_doActivateExtension vscode.github-authentication, startup: false, activationEvent: 'onAuthenticationRequest:github'
+2026-08-25 16:22:36.713 [info] ExtensionService#_doActivateExtension vscode.emmet, startup: false, activationEvent: 'onLanguage'
+2026-08-25 16:22:36.719 [info] ExtensionService#_doActivateExtension vuurraaf.vuurraaf, startup: false, activationEvent: 'onLanguage:vuurraaf'
+2026-08-25 16:22:36.787 [info] ExtensionService#_doActivateExtension vscode.git-base, startup: true, activationEvent: '*', root cause: vscode.git
+2026-08-25 16:22:36.791 [info] ExtensionService#_doActivateExtension vscode.git, startup: true, activationEvent: '*'
+2026-08-25 16:22:36.811 [info] ExtensionService#_doActivateExtension vscode.github, startup: true, activationEvent: '*'
+2026-08-25 16:22:36.859 [warning] [vscode.git] Accessing a resource scoped configuration without providing a resource is not expected. To get the effective value for 'git.openRepositoryInParentFolders', provide the URI of a resource or 'null' for any resource.
+2026-08-25 16:22:36.859 [warning] [vscode.git] Accessing a resource scoped configuration without providing a resource is not expected. To get the effective value for 'git.showProgress', provide the URI of a resource or 'null' for any resource.
+2026-08-25 16:22:36.867 [info] Eager extensions activated
+2026-08-25 16:22:36.900 [info] ExtensionService#_doActivateExtension vscode.debug-auto-launch, startup: false, activationEvent: 'onStartupFinished'
+2026-08-25 16:22:36.901 [info] ExtensionService#_doActivateExtension vscode.merge-conflict, startup: false, activationEvent: 'onStartupFinished'
+2026-08-25 16:22:39.717 [info] ExtensionService#_doActivateExtension vscode.configuration-editing, startup: false, activationEvent: 'onLanguage:jsonc'
+2026-08-25 16:22:39.721 [info] ExtensionService#_doActivateExtension vscode.json-language-features, startup: false, activationEvent: 'onLanguage:jsonc'
+2026-08-25 16:22:39.747 [info] ExtensionService#_doActivateExtension vscode.typescript-language-features, startup: false, activationEvent: 'onLanguage:jsonc'
+2026-08-25 16:22:45.071 [warning] Accessing a resource scoped configuration without providing a resource is not expected. To get the effective value for 'search.useIgnoreFiles', provide the URI of a resource or 'null' for any resource.
+2026-08-25 16:22:45.072 [warning] Accessing a resource scoped configuration without providing a resource is not expected. To get the effective value for 'search.useIgnoreFiles', provide the URI of a resource or 'null' for any resource.
+2026-08-25 16:22:47.129 [info] Extension host terminating: received terminate message from renderer
+2026-08-25 16:22:47.217 [info] Extension host with pid 3079 exiting with code 0

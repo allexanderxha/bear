@@ -1,0 +1,104 @@
+2026-08-25 16:23:59.530 [info] [AgentHost:renderer] Acquiring MessagePort to agent host...
+2026-08-25 16:23:59.617 [info] [ChatModelSelection] event=no-model-at-toolbar-build surface="workbench" sessionKey=undefined conversationKey=undefined modelTarget=undefined storageKey="chat.currentLanguageModel.panel" widgetViewKind="view"
+2026-08-25 16:23:59.766 [info] [ChatModelSelection] event=no-model-at-toolbar-build surface="workbench" sessionKey="local" conversationKey="vscode-chat-session://local/OWU4NjNjOWItNTQ3Ni00ZGY2LWE2MjctMTYyYzBkNmNlODU1" modelTarget=undefined storageKey="chat.currentLanguageModel.panel" widgetViewKind="view"
+2026-08-25 16:23:59.768 [info] Loading development extension at /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension
+2026-08-25 16:23:59.850 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/user-data/User for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:23:59.851 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/test/fixtures/workspace/.vscode for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:23:59.851 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/test/fixtures/workspace/.vscode/settings.json for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:23:59.910 [info] [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false
+2026-08-25 16:23:59.935 [error] [File Watcher (node.js)] Refusing to watch /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/.vscode-test/user-data/User/snippets for changes using fs.watch() for possibly being a network share where watching is unreliable and unstable.
+2026-08-25 16:23:59.956 [error] Unable to create workbench contribution 'chat.contextContributions'. [createInstance] _St depends on UNKNOWN service chatSessionRoutingProviderService.
+2026-08-25 16:24:00.089 [info] Settings Sync: Account status changed from uninitialized to unavailable
+2026-08-25 16:24:00.343 [info] [AgentHost:renderer] MessagePort acquired, creating client...
+2026-08-25 16:24:00.343 [info] Started local extension host with pid 5961.
+2026-08-25 16:24:00.639 [info] [AgentHost:renderer] Protocol connection established; clientId=c9db8215-4a70-46ca-8b56-0add9857071b
+2026-08-25 16:24:00.656 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.693 [info] [AgentHost] Clearing authentication for resource: https://api.github.com
+2026-08-25 16:24:00.719 [info] %s%s  
+2026-08-25 16:24:00.720 [info] %s%s    VuurRaaf extension
+2026-08-25 16:24:00.736 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.737 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.737 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.737 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.737 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.737 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.737 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.737 [info]     ✔ %s vuurraaf language (grammar) is registered
+2026-08-25 16:24:00.738 [info] [AgentHost] Clearing authentication for resource: https://api.github.com/repos
+2026-08-25 16:24:00.740 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.740 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.740 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.740 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.740 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.740 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.741 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.741 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.742 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.742 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.743 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.743 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.743 [info] [AgentHost] No token resolved for resource: https://api.github.com
+2026-08-25 16:24:00.743 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.745 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.746 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.748 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.748 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.748 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:00.749 [info] [AgentHost] No token resolved for resource: https://api.github.com/repos
+2026-08-25 16:24:01.043 [info] [ChatModelSelection] event=no-model-at-toolbar-build surface="workbench" sessionKey="local" conversationKey="vscode-chat-session://local/OWU4NjNjOWItNTQ3Ni00ZGY2LWE2MjctMTYyYzBkNmNlODU1" modelTarget=undefined storageKey="chat.currentLanguageModel.panel" widgetViewKind="view"
+2026-08-25 16:24:01.831 [warning] rejected promise not handled within 1 second: Launching server using command /Volumes/DA/vuurraaf/vuurraaf-v/ failed. Error: spawn /Volumes/DA/vuurraaf/vuurraaf-v/ ENOENT
+2026-08-25 16:24:01.831 [error] Launching server using command /Volumes/DA/vuurraaf/vuurraaf-v/ failed. Error: spawn /Volumes/DA/vuurraaf/vuurraaf-v/ ENOENT
+2026-08-25 16:24:05.045 [info] [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false
+2026-08-25 16:24:30.881 [info]     %d) %s 1 language server publishes compiler diagnostics
+2026-08-25 16:24:30.884 [info]     %d) %s 2 go-to-definition jumps to the function declaration
+2026-08-25 16:24:30.889 [info]     %d) %s 3 hover reports the symbol kind
+2026-08-25 16:24:40.952 [info]     %d) %s 4 go-to-definition resolves stdlib module functions
+2026-08-25 16:24:40.953 [info]   %d passing (%s) 1 40s
+2026-08-25 16:24:40.954 [info]   %d failing 4
+2026-08-25 16:24:40.955 [info]   %s) %s:
+%s
+%s
+ 1 VuurRaaf extension
+       language server publishes compiler diagnostics 
+      AssertionError [ERR_ASSERTION]: no diagnostics were published
+      + expected - actual
+
+      -false
+      +true
+         	at Context.<anonymous> (test/suite/extension.test.js:45:10)
+2026-08-25 16:24:40.955 [info]   %s) %s:
+%s
+%s
+ 2 VuurRaaf extension
+       go-to-definition jumps to the function declaration 
+      AssertionError [ERR_ASSERTION]: no definition returned for helper
+      + expected - actual
+
+      -false
+      +true
+         	at Context.<anonymous> (test/suite/extension.test.js:60:10)
+2026-08-25 16:24:40.956 [info]   %s) %s:
+%s
+%s
+ 3 VuurRaaf extension
+       hover reports the symbol kind 
+      AssertionError [ERR_ASSERTION]: no hover returned for y
+      + expected - actual
+
+      -false
+      +true
+         	at Context.<anonymous> (test/suite/extension.test.js:69:10)
+2026-08-25 16:24:40.956 [info]   %s) %s:
+%s
+%s
+ 4 VuurRaaf extension
+       go-to-definition resolves stdlib module functions 
+      AssertionError [ERR_ASSERTION]: no definition returned for os.exists
+      + expected - actual
+
+      -false
+      +true
+         	at Context.<anonymous> (test/suite/extension.test.js:98:10)
+2026-08-25 16:24:40.957 [error] Error: 4 test(s) failed
+	at /Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/test/suite/index.js:15:12
+	at done (/Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v/extension/node_modules/mocha/lib/mocha.js:1028:7)
