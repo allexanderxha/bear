@@ -1,6 +1,8 @@
+#!/usr/bin/env vr
 // build.vrmm — a VuurRaaf Make Module: build instructions for the toolchain,
 // written in VuurRaaf itself (like V's .vsh, but for this language).
 //
+//   ./examples/build.vrmm                         run directly (after chmod +x)
 //   ./bin/vr make -f examples/build.vrmm          build + run hello
 //   ./bin/vr make -f examples/build.vrmm multi    compile/link/run a 2-file program
 //   ./bin/vr make -f examples/build.vrmm test     run tests.vr

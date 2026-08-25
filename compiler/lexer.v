@@ -2,7 +2,15 @@
 module compiler
 
 pub fn tokenize(src string) ![]Tok {
-	mut l := Lexer{ src: src, line: 1 }
+	// a script may start with a shebang line (#!...) so it can be executed
+	// directly (e.g. `#!/usr/bin/env vr`). Drop it, but keep the trailing
+	// newline so error line numbers stay aligned with the file on disk.
+	mut s := src
+	if s.starts_with('#!') {
+		nl := s.index('\n') or { s.len }
+		s = s[nl..]
+	}
+	mut l := Lexer{ src: s, line: 1 }
 	mut toks := []Tok{}
 	for {
 		t := l.next()!

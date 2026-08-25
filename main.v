@@ -113,6 +113,21 @@ fn main() {
 			toolchain_unloader()
 		}
 		else {
+			// direct script execution — this is what makes shebangs work:
+			// `#!/usr/bin/env vr` has the kernel call `vr <script> [args...]`,
+			// so route an existing .vrmm/.vr file to make/run accordingly
+			if os.exists(cmd) && cmd.ends_with('.vrmm') {
+				mut m := ['-f', cmd]
+				m << args[1..]
+				toolchain_make(m) or { die('make', err) }
+				return
+			}
+			if os.exists(cmd) && cmd.ends_with('.vr') {
+				mut r := [cmd]
+				r << args[1..]
+				toolchain_run(r) or { die('run', err) }
+				return
+			}
 			eprintln('vr: unknown command "${cmd}"')
 			eprintln("run 'vr help' for usage")
 			exit(1)
@@ -183,6 +198,8 @@ fn toolchain_help() {
 	println('  make [target] [args...]                  run build.vrmm (target = main)')
 	println('  make -f <file.vrmm> [target] [args...]   run another build module (.vrmm)')
 	println('  build                                    alias for make')
+	println('  <script.vrmm> [target] [args...]         run a build module directly (shebang)')
+	println('  <file.vr> [args...]                      run a program directly (shebang)')
 	println('  clean                                    remove build artifacts')
 	println('  up                                       rebuild the vr binary into bin/')
 	println('  symlink                                  link bin/vr into your PATH')

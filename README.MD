@@ -106,6 +106,31 @@ A target that returns a nonzero integer, calls `exit(n)` with `n > 0`, or
 `throw`s fails the build. Paths are relative to the working directory;
 `build_root()` returns the module's own directory for absolute paths.
 
+### Running build modules as scripts
+
+A `.vrmm` (or `.vr`) file may start with a shebang line so it can be executed
+directly like any script — the toolchain skips the shebang when compiling, so
+error line numbers stay aligned with the file:
+
+```
+#!/usr/bin/env vr
+fn main() {
+    build_compile("main.vr", "main.vobj")
+    build_link(["main.vobj"], "main.vbin")
+}
+```
+
+```bash
+chmod +x build.vrmm
+./build.vrmm            # equivalent to: vr make
+./build.vrmm clean      # run the clean() target
+./build.vrmm deploy --prod
+```
+
+The kernel invokes `vr <script> [args...]`; the toolchain routes an existing
+`.vrmm` path to `vr make -f <file>` and an existing `.vr` path to
+`vr run <file>`, so `vr myprog.vr` also just works.
+
 Build builtins:
 
 | builtin | description |
