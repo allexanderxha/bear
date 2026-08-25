@@ -35,6 +35,7 @@ fn run_internal(bin obj.Bin, entry string, trace bool, args []string, root strin
 		trace:      trace
 		prog_args:  args
 		lines:      bin.lines
+		fns:        bin.fns
 		const_strs: bin.strings.len
 		build_root: root
 	}
@@ -61,7 +62,7 @@ fn run_internal(bin obj.Bin, entry string, trace bool, args []string, root strin
 	v.bp = v.sp
 	v.ip = entry_ip
 	v.exec() or {
-		return error('${err.msg()} at ${v.where()}')
+		return error('${err.msg()} at ${v.where()}\n${v.stack_trace()}')
 	}
 	if v.did_exit {
 		return v.exit_code
@@ -75,14 +76,57 @@ fn run_internal(bin obj.Bin, entry string, trace bool, args []string, root strin
 // where returns a source-level location for the current instruction pointer:
 // `line 12 (ip 345)` when debug info is available, otherwise just `(ip 345)`.
 fn (v Vm) where() string {
+	return 'line ${v.line_at(v.ip)} (ip ${v.ip})'
+}
+
+// line_at maps a code offset to its source line via the line table.
+fn (v Vm) line_at(ip int) int {
 	// line table entries are recorded in code order, so walk backwards from
-	// the most recent entry to find the last one at or before v.ip
+	// the most recent entry to find the last one at or before ip
 	for i := v.lines.len - 1; i >= 0; i-- {
-		if v.ip >= int(v.lines[i].off) {
-			return 'line ${v.lines[i].line} (ip ${v.ip})'
+		if ip >= int(v.lines[i].off) {
+			return v.lines[i].line
 		}
 	}
-	return '(ip ${v.ip})'
+	return 0
+}
+
+// func_at returns the name of the function whose body contains the given
+// code offset. Functions are laid out sequentially, so the enclosing
+// function is the one with the greatest entry point <= ip.
+fn (v Vm) func_at(ip int) string {
+	mut name := '?'
+	for f in v.fns {
+		if f.entry <= ip {
+			name = f.name
+		}
+	}
+	return name
+}
+
+// stack_trace renders the call chain at the moment an error is raised, from
+// the innermost frame out to main. Each frame's return address and saved bp
+// live in the frame header pushed by `call`: [retaddr, old_bp, argc] at
+// bp-3..bp-1. The synthetic entry frame has retaddr == -1 (the halt sentinel).
+fn (mut v Vm) stack_trace() string {
+	mut out := []string{}
+	mut bp := v.bp
+	mut ip := v.ip
+	mut guard := 0
+	// note: sp may have dropped below bp (an error handler pops values), so
+	// the frame chain is bounded by the guard and the old_bp < bp invariant
+	for bp >= 3 && guard < 10000 {
+		out << '  at ${v.func_at(ip)} (line ${v.line_at(ip)})'
+		ret := v.dec_int(v.stack[bp - 3])
+		old_bp := int(v.dec_int(v.stack[bp - 2]))
+		if ret == -1 || old_bp < 0 || old_bp >= bp {
+			break // reached the synthetic entry frame
+		}
+		ip = int(ret)
+		bp = old_bp
+		guard++
+	}
+	return out.join('\n')
 }
 
 fn (mut v Vm) exec() ! {
@@ -303,37 +347,67 @@ fn (mut v Vm) exec() ! {
 			}
 			op_aget {
 				v.ip++
-				idx := int(v.dec_int(v.pop()!))
+				idxv := v.pop()!
 				h := v.pop()!
-				if v.is_arr(h) && v.valid_arr_handle(h) {
-					a := v.arrays[v.hand(h)]
-					if idx < 0 || idx >= a.len {
-						return error('array index ${idx} out of bounds (len ${a.len})')
+				// dynamic map read: m[key_expr] where the base is a struct and the
+				// index evaluates to a string
+				if v.is_struct(h) && v.valid_struct_handle(h) && v.is_str(idxv) && v.valid_handle(idxv) {
+					fname := v.strings[v.hand(idxv)]
+					s := v.structs[v.hand(h)]
+					idx, ok := v.field_idx(s, fname)
+					if ok {
+						v.push(s.fields[idx].val)!
+					} else {
+						return error('no field "${fname}" on struct')
 					}
-					v.push(a[idx])!
-				} else if v.is_str(h) && v.valid_handle(h) {
-					// rune-based string indexing: s[i] is the i-th character
-					runes := v.strings[v.hand(h)].runes()
-					if idx < 0 || idx >= runes.len {
-						return error('string index ${idx} out of bounds (len ${runes.len})')
-					}
-					v.push(v.alloc_str(runes[idx].str()))!
 				} else {
-					return error('indexing a non-array, non-string value')
+					idx := int(v.dec_int(idxv))
+					if v.is_arr(h) && v.valid_arr_handle(h) {
+						a := v.arrays[v.hand(h)]
+						if idx < 0 || idx >= a.len {
+							return error('array index ${idx} out of bounds (len ${a.len})')
+						}
+						v.push(a[idx])!
+					} else if v.is_str(h) && v.valid_handle(h) {
+						// rune-based string indexing: s[i] is the i-th character
+						runes := v.strings[v.hand(h)].runes()
+						if idx < 0 || idx >= runes.len {
+							return error('string index ${idx} out of bounds (len ${runes.len})')
+						}
+						v.push(v.alloc_str(runes[idx].str()))!
+					} else {
+						return error('indexing a non-array, non-string value')
+					}
 				}
 			}
 			op_aset {
 				v.ip++
 				val := v.pop()!
-				idx := int(v.dec_int(v.pop()!))
+				idxv := v.pop()!
 				h := v.pop()!
-				if !v.is_arr(h) || !v.valid_arr_handle(h) {
-					return error('indexing a non-array value')
+				// dynamic map write: m[key_expr] = v (string key on a struct)
+				if v.is_struct(h) && v.valid_struct_handle(h) && v.is_str(idxv) && v.valid_handle(idxv) {
+					fname := v.strings[v.hand(idxv)]
+					mut s := v.structs[v.hand(h)]
+					idx, ok := v.field_idx(s, fname)
+					if ok {
+						s.fields[idx].val = val
+					} else {
+						// setting a missing field adds it, so maps can grow
+						s.fields << Field{ name: fname, val: val }
+						s.by_name[fname] = s.fields.len - 1
+					}
+					v.structs[v.hand(h)] = s
+				} else {
+					idx := int(v.dec_int(idxv))
+					if !v.is_arr(h) || !v.valid_arr_handle(h) {
+						return error('indexing a non-array value')
+					}
+					if idx < 0 || idx >= v.arrays[v.hand(h)].len {
+						return error('array index ${idx} out of bounds (len ${v.arrays[v.hand(h)].len})')
+					}
+					v.arrays[v.hand(h)][idx] = val
 				}
-				if idx < 0 || idx >= v.arrays[v.hand(h)].len {
-					return error('array index ${idx} out of bounds (len ${v.arrays[v.hand(h)].len})')
-				}
-				v.arrays[v.hand(h)][idx] = val
 			}
 			op_alen {
 				v.ip++
@@ -371,7 +445,7 @@ fn (mut v Vm) exec() ! {
 					}
 					fields[i] = Field{ name: v.strings[v.hand(name)], val: val }
 				}
-				v.structs << StructVal{ fields: fields }
+				v.structs << StructVal{ fields: fields, by_name: v.index_fields(fields) }
 				v.push(v.mkstruct_handle(v.structs.len - 1))!
 			}
 			op_sget {
@@ -385,15 +459,11 @@ fn (mut v Vm) exec() ! {
 					return error('internal: field name is not a string')
 				}
 				fname := v.strings[v.hand(name)]
-				mut found := false
-				for f in v.structs[v.hand(h)].fields {
-					if f.name == fname {
-						v.push(f.val)!
-						found = true
-						break
-					}
-				}
-				if !found {
+				s := v.structs[v.hand(h)]
+				idx, ok := v.field_idx(s, fname)
+				if ok {
+					v.push(s.fields[idx].val)!
+				} else {
 					return error('no field "${fname}" on struct')
 				}
 			}
@@ -411,18 +481,14 @@ fn (mut v Vm) exec() ! {
 				}
 				fname := v.strings[v.hand(name)]
 				mut s := v.structs[v.hand(h)]
-				mut found := false
-				for i, f in s.fields {
-					if f.name == fname {
-						s.fields[i].val = val
-						found = true
-						break
-					}
-				}
-				if !found {
+				idx, ok := v.field_idx(s, fname)
+				if ok {
+					s.fields[idx].val = val
+				} else {
 					// setting a missing field adds it, so records can be built
 					// incrementally from an empty `{}`
 					s.fields << Field{ name: fname, val: val }
+					s.by_name[fname] = s.fields.len - 1
 				}
 				v.structs[v.hand(h)] = s
 			}
@@ -526,7 +592,14 @@ fn (mut v Vm) exec() ! {
 			op_closure {
 				v.ip++
 				entry := int(v.read_i64())
-				v.closures << Closure{ entry: entry }
+				n := int(v.read_i64())
+				// the captured values were pushed by the compiler in capture
+				// order; pop them back into the closure's own array
+				mut captured := []i64{len: n}
+				for i := n - 1; i >= 0; i-- {
+					captured[i] = v.pop()!
+				}
+				v.closures << Closure{ entry: entry, captured: captured }
 				v.push(v.mkclosure(v.closures.len - 1))!
 			}
 			op_call_closure {
@@ -537,17 +610,30 @@ fn (mut v Vm) exec() ! {
 				if !v.is_closure(h) || !v.valid_closure_handle(h) {
 					return error('cannot call a non-function value')
 				}
-				entry := v.closures[v.hand(h)].entry
-				// Shift args left to overwrite the closure slot (and drop the
-				// duplicated tail), so the callee's retv lands exactly where the
-				// call sequence began and no stale value is left below the
-				// result. The caller's own local holding the closure sits below
-				// the pushed sequence and is never touched.
-				for i := 0; i < argc; i++ {
-					v.stack[v.sp - argc - 1 + i] = v.stack[v.sp - argc + i]
+				cl := v.closures[v.hand(h)]
+				n := cl.captured.len
+				c := v.sp - argc - 1 // closure slot
+				// Rearrange the stack from [...closure, arg_0..arg_{argc-1}] to
+				// [capture_0..capture_{n-1}, arg_0..arg_{argc-1}]: the captures
+				// take over the closure slot, and the args shift by (1 - n) so
+				// the callee sees captures as its leading locals followed by the
+				// real arguments. v.call cleans the whole region up on ret.
+				if n > 1 {
+					// shifting right: copy backwards to avoid clobbering
+					for i := argc - 1; i >= 0; i-- {
+						v.stack[c + n + i] = v.stack[c + 1 + i]
+					}
+				} else {
+					// shifting left (or no shift): copy forwards
+					for i := 0; i < argc; i++ {
+						v.stack[c + n + i] = v.stack[c + 1 + i]
+					}
 				}
-				v.sp-- // drop the duplicated arg tail; closure slot was consumed
-				v.call(entry, argc)
+				for i in 0..n {
+					v.stack[c + i] = cl.captured[i]
+				}
+				v.sp = c + n + argc
+				v.call(cl.entry, argc + n)
 			}
 			op_argc {
 				v.ip++
@@ -595,6 +681,25 @@ fn (mut v Vm) exec() ! {
 	}
 }
 
+// field_idx returns the index of a named field via the hash index, or
+// (0, false) when the field does not exist.
+fn (v Vm) field_idx(s StructVal, fname string) (int, bool) {
+	if fname in s.by_name {
+		return s.by_name[fname], true
+	}
+	return 0, false
+}
+
+// index_fields builds the name -> index hash map for a freshly built field
+// list (used by mkstruct and other struct constructors).
+fn (v Vm) index_fields(fields []Field) map[string]int {
+	mut m := map[string]int{}
+	for i, f in fields {
+		m[f.name] = i
+	}
+	return m
+}
+
 // op_shas checks if a struct has a field with the given name.
 // stack: struct, "key"  →  pushes 1 if found, 0 if not.
 fn (mut v Vm) op_shas() ! {
@@ -608,13 +713,7 @@ fn (mut v Vm) op_shas() ! {
 		return error('internal: field name is not a string')
 	}
 	fname := v.strings[v.hand(name)]
-	mut found := false
-	for f in v.structs[v.hand(h)].fields {
-		if f.name == fname {
-			found = true
-			break
-		}
-	}
+	found := fname in v.structs[v.hand(h)].by_name
 	v.push(v.enc_int(if found { 1 } else { 0 }))!
 }
 
@@ -629,19 +728,22 @@ fn (mut v Vm) op_sdel() ! {
 	}
 	if !v.is_str(name) || !v.valid_handle(name) {
 		return error('internal: field name is not a string')
-	}
-	fname := v.strings[v.hand(name)]
-	mut s := v.structs[v.hand(h)]
-	mut new_fields := []Field{}
-	for f in s.fields {
-		if f.name != fname {
-			new_fields << f
+	}		fname := v.strings[v.hand(name)]
+		mut s := v.structs[v.hand(h)]
+		idx, ok := v.field_idx(s, fname)
+		if ok {
+			mut new_fields := []Field{}
+			for i, f in s.fields {
+				if i != idx {
+					new_fields << f
+				}
+			}
+			s.fields = new_fields
+			s.by_name = v.index_fields(new_fields)
+			v.structs[v.hand(h)] = s
 		}
+		v.push(h)!
 	}
-	s.fields = new_fields
-	v.structs[v.hand(h)] = s
-	v.push(h)!
-}
 
 // op_slen returns the number of fields in a struct.
 // stack: struct  →  pushes field count.

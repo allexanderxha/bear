@@ -34,3 +34,26 @@ fn date(t) {
 fn clock(t) {
 	return format_time(t, "HH:mm:ss")
 }
+
+// weekday(t) returns the day of the week, e.g. "Mon", "Tue", ... "Sun".
+fn weekday(t) {
+	return weekday(t)
+}
+
+// --- date arithmetic (all values are Unix epoch seconds) ---
+
+fn add_seconds(t, n) {
+	return t + n
+}
+
+fn add_minutes(t, n) {
+	return t + n * 60
+}
+
+fn add_hours(t, n) {
+	return t + n * 3600
+}
+
+fn add_days(t, n) {
+	return t + n * 86400
+}

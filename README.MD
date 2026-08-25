@@ -41,6 +41,7 @@ vr up                                       rebuild bin/vr
 vr symlink                                  link bin/vr into your PATH
 vr config [set <key> <value>]               toolchain config (outdir, verbose)
 vr repl                                     interactive session
+vr lsp                                      language server (JSON-RPC over stdio)
 vr fmt [-w] <file.vr>                       format source (keeps comments)
 vr init [name]                              scaffold a project (vr.mod + main.vr)
 vr get <owner/repo | git-url | ./path>      fetch a package into vendor/
@@ -53,6 +54,9 @@ vr info | loader | alloc | version | help
 ./bin/vr repl          # try expressions and functions interactively
 ./bin/vr fmt -w f.vr   # normalize a file's indentation/spacing in place
 ./bin/vr init myproj   # start a project; vr get owner/repo fetches packages
+./bin/vr run -w f.vr   # watch f.vr and rerun on every save
+./bin/vr test examples # run every test_* fn in every .vr file under examples/
+./bin/vr lsp           # language server for editors (diagnostics, go-to-def)
 ```
 
 Quick start:
@@ -165,12 +169,17 @@ Module functions are namespaced: `os.exists()`, `json.encode()`, ...
 
 | module | functions |
 | --- | --- |
-| `os` | filesystem + process: `exists`, `is_dir`, `is_file`, `mkdir`, `remove`, `copy`, `list_dir`, `glob`, `join`, `base`, `dir`, `read_lines`, `write_lines`, `cwd`, `env`, `exec` |
+| `os` | filesystem + process: `exists`, `is_dir`, `is_file`, `mkdir`, `remove`, `copy`, `list_dir`, `glob`, `join`, `base`, `dir`, `read_lines`, `write_lines`, `cwd`, `env`, `exec`, `exec_full` (`{code, stdout, stderr}`), `ext`, `abs`, `rel` |
 | `json` | `encode`, `decode`, `pretty` — objects become structs, integral numbers decode as ints, `null` ⇄ `none` |
 | `strings` | `length`, `lines`, `split`, `join`, `replace`, `contains`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `pad`, `pad_left`, `repeat`, `format`, `capitalize` |
 | `math` | `abs`, `min`, `max`, `floor`, `ceil`, `round`, `sqrt`, `pow`, `clamp`, `sign`, `pi` |
-| `http` | `get(url)`, `post(url, data)`, `get_text(url)` — return `{status, body}`; network failures throw (catchable), HTTP errors (404) are normal responses |
-| `time` | `now()` (epoch s), `ms()` (epoch ms), `format(t, "YYYY-MM-DD HH:mm:ss")`, `date(t)`, `clock(t)`, `parse("2026-08-25 13:36:45")` — Moment-style tokens |
+| `http` | `get(url)`, `post(url, data)`, `get_text(url)`, `request(method, url, data, headers, timeout_ms)`, `get_with_headers`, `post_with_headers`, `get_timeout`, `post_timeout` — return `{status, body}`; network failures throw (catchable), HTTP errors (404) are normal responses |
+| `time` | `now()` (epoch s), `ms()` (epoch ms), `format(t, "YYYY-MM-DD HH:mm:ss")`, `date(t)`, `clock(t)`, `parse("2026-08-25 13:36:45")`, `add_days/add_hours/add_minutes/add_seconds`, `weekday(t)` — Moment-style tokens |
+| `regex` | `is_match(pattern, s)`, `find_all(pattern, s)`, `replace(pattern, s, repl)`, `split(pattern, s)` — RE2 syntax; use raw strings `r"\d+"` for patterns |
+| `crypto` | `sha256(s)`, `md5(s)`, `base64_encode(s)`, `base64_decode(s)` |
+| `csv` | `parse(s)` — returns an array of rows (arrays of cell strings) |
+
+Examples: `examples/imports.vr`, `examples/http.vr`, `examples/time.vr`, `examples/stdlib.vr` (tests for the regex/crypto/csv/os/time additions).
 
 Examples: `examples/imports.vr`, `examples/http.vr`, `examples/time.vr`.
 
@@ -257,7 +266,12 @@ fn main() {
 - functions: `fn name(a, b) { ... }` with `return expr`; default parameter
   values `fn f(a, b = 10)`, variadic params `fn f(nums...)`, destructuring
   `let { a, b } = rec` and `let [x, y] = arr`, and anonymous closures
-  `let f = fn(x) { return x * 2 }` stored in variables and arrays
+  `let f = fn(x) { return x * 2 }` stored in variables and arrays; a closure
+  **captures the enclosing locals it references by value** (nested closures
+  included), so `let n = 1; let bump = fn() { n = n + 1; return n }` works —
+  writes hit the closure's own copy, the outer variable is untouched
+- raw strings: `r"..."` passes text through verbatim (no escape processing),
+  ideal for regex patterns like `r"\d+"`
 - generics: `fn first[T](arr) { return arr[0] }` with checked call sites
   `first[int](arr)` — the VM is dynamically typed, so type parameters erase
   to a single function but arity and duplicates are validated
@@ -269,6 +283,9 @@ fn main() {
   and slice by character (runes), and methods like `s.to_upper()`,
   `s.contains(x)`, `s.split(d)`, `s.index_of(x)`, `s.to_int()`, `s.len()`
   work on any string-valued expression
+- maps: structs serve as string-keyed maps with **hash-indexed O(1)** access;
+  keys may be computed expressions (`m[key_var] = v`, `m[key_var]`), not just
+  literals; `has(m, k)`, `delete(m, k)`, `keys(m)`, `len(m)` all work
 - arrays: `[e1, e2, ...]`, indexing `a[i]` (read and write), `len(a)`,
   `push/insert/remove/pop/sort/reverse/clone/index_of/join`; array literals
   may nest
@@ -355,7 +372,7 @@ field name as a string first, exactly like the compiler does).
 | `compiler/`  | lexer, parser, type checker, bytecode codegen (VROBJ)      |
 | `assembler/` | `.vasm` -> VROBJ                                            |
 | `linker/`    | resolves relocations, rebases strings, emits VRBIN          |
-| `vm/`        | stack VM: tagged values, call frames, string/array heaps    |
+| `vm/`        | stack VM: tagged values, call frames, string/array heaps, hash-indexed structs, GC-traced closure captures |
 | `obj/`       | VROBJ/VRBIN binary formats                                  |
 | `bin/`       | small standalone tools: `tl_alloc.v`, `tl_loader.v`         |
 
@@ -364,12 +381,30 @@ ints, string/array/struct/float/closure handles — so no integer ever
 collides with a heap handle. A mark-and-sweep garbage collector runs between
 opcodes when the heap grows past a threshold, tracing the stack (which holds
 every frame's locals) and compacting the pools; string constants baked into
-bytecode are never collected. Bytecode carries a line table, so runtime
-errors report the source line. A conservative compile-time type checker
+bytecode are never collected. Structs carry a hash index, so map-style field
+access is O(1); closure captures live inside the closure and are traced and
+remapped by the GC like any other heap value. Bytecode carries a line table,
+so runtime errors report the source line **and a full call-stack trace**
+(`fn` → line for every frame). A conservative compile-time type checker
 (`compiler/check.v`) rejects provably wrong programs (unknown variables,
 field access on numbers, arithmetic on strings, wrong arity) while leaving
 dynamic programs alone. `vr debug` prints every instruction with the stack
 contents (arrays rendered as `[1, 2, ...]`).
+
+## Editor support
+
+`vr lsp` speaks LSP over stdio, so any LSP-capable editor gets diagnostics
+(the compiler's errors, positioned at the right line), go-to-definition
+(functions, structs, enums, constants, locals, and stdlib module functions),
+and hover (symbol kind + line). The `extension/` folder contains a VS Code
+client (`code --install-extension extension/` after `npm install` in
+`extension/`) with syntax highlighting, or point any other LSP client at
+`vr lsp`.
+
+## Releases
+
+Tagging `vX.Y.Z` (matching `v.mod`) builds `vr` for Linux, macOS and
+Windows and attaches them to a GitHub Release.
 
 ## Repository layout
 

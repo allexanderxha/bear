@@ -84,6 +84,13 @@ fn (mut v Vm) collect() {
 			}
 		}
 	}
+	for h in 0..v.closures.len {
+		if closure_mark[h] {
+			for j in 0..v.closures[h].captured.len {
+				v.closures[h].captured[j] = v.remap(v.closures[h].captured[j], str_new, arr_new, struct_new, float_new, closure_new)
+			}
+		}
+	}
 	// ---- compact pools ----
 	mut strings := v.strings[..v.const_strs]
 	for i in v.const_strs..v.strings.len {
@@ -164,6 +171,9 @@ fn (mut v Vm) mark_value(x i64, mut str_mark []bool, mut arr_mark []bool, mut st
 				h := v.hand(val)
 				if h >= 0 && h < closure_mark.len && !closure_mark[h] {
 					closure_mark[h] = true
+					for cv in v.closures[h].captured {
+						work << cv
+					}
 				}
 			}
 			else {}

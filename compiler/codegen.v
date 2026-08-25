@@ -44,6 +44,7 @@ mut:
 	enter_off u32
 	next_lbl  int
 	modules   map[string]bool // imported module names (bare `import os`)
+	captures  []string        // enclosing locals captured by the closure being compiled
 }
 
 fn gen(prog Program) !obj.Obj {
@@ -121,6 +122,7 @@ fn gen(prog Program) !obj.Obj {
 		}
 	}
 	for fd in prog.fns {
+		g.captures = []string{} // top-level functions capture nothing
 		g.gen_fn(fd)!
 	}
 	return obj.Obj{
@@ -142,9 +144,16 @@ fn (mut g Gen) gen_fn(fd FnDecl) ! {
 	g.locals.clear()
 	g.types.clear()
 	g.local_cnt = 0
-	g.argc = fd.params.len + if fd.recv_type.len > 0 { 1 } else { 0 }
+	// closure captures occupy the leading local slots (filled by the caller's
+	// op_call_closure), then the receiver (methods), then the parameters
+	g.argc = fd.params.len + g.captures.len + if fd.recv_type.len > 0 { 1 } else { 0 }
 	mut next := 0
-	if fd.recv_type.len > 0 {
+	if g.captures.len > 0 {
+		for i, c in g.captures {
+			g.locals[c] = i
+		}
+		next = g.captures.len
+	} else if fd.recv_type.len > 0 {
 		g.locals[fd.recv_name] = 0
 		g.types[fd.recv_name] = fd.recv_type
 		next = 1
@@ -711,6 +720,9 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 		.anon_fn {
 			g.lam_counter++
 			name := '__lam_${g.lam_counter}'
+			// find the enclosing locals the body references (its free
+			// variables); they become this closure's captures
+			caps := g.scan_captures(e.fn_body, e.fparams)
 			// jump over the lambda body so callers don't fall through
 			g.code << op_jmp
 			g.code << obj.encode_i64(0)
@@ -735,8 +747,10 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			saved_local_cnt := g.local_cnt
 			saved_enter_off := g.enter_off
 			saved_argc := g.argc
+			saved_captures := g.captures
 			g.labels.clear()
 			g.fixups = []Fixup{}
+			g.captures = caps
 			g.gen_fn(fd)!
 			// Restore the enclosing state.
 			g.fixups = saved_fixups
@@ -746,12 +760,18 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.local_cnt = saved_local_cnt
 			g.enter_off = saved_enter_off
 			g.argc = saved_argc
+			g.captures = saved_captures
 			// Patch the skip jump to land at the closure opcode we emit next
 			// (PC-relative, like all other jump targets).
 			obj.patch_i64(mut g.code, skip_fix_off, i64(g.code.len - (int(skip_fix_off) + 8)))
+			// capture the enclosing locals' current values (capture by value)
+			for cname in caps {
+				g.emit_load(g.locals[cname])
+			}
 			g.code << op_closure
 			g.code << obj.encode_i64(0)
 			g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: name, kind: 0 }
+			g.code << obj.encode_i64(i64(caps.len))
 		}
 		.bool_lit {
 			g.code << op_push_i
@@ -982,6 +1002,24 @@ fn builtin_spec(name string) (int, int) {
 		'time_ms' { native_time_ms, 0 }
 		'format_time' { native_format_time, 2 }
 		'parse_time' { native_parse_time, 1 }
+		'weekday' { native_weekday, 1 }
+		// regex
+		'regex_match' { native_regex_match, 2 }
+		'regex_find_all' { native_regex_find_all, 2 }
+		'regex_replace' { native_regex_replace, 3 }
+		'regex_split' { native_regex_split, 2 }
+		// crypto/encoding
+		'base64_encode' { native_base64_encode, 1 }
+		'base64_decode' { native_base64_decode, 1 }
+		'sha256' { native_sha256, 1 }
+		'md5' { native_md5, 1 }
+		'csv_parse' { native_csv_parse, 1 }
+		// extended HTTP + path/process helpers
+		'http_req' { native_http_req, 5 }
+		'path_ext' { native_path_ext, 1 }
+		'path_abs' { native_path_abs, 1 }
+		'path_rel' { native_path_rel, 2 }
+		'exec_full' { native_exec_full, 1 }
 		else { -1, 0 }
 	}
 }
@@ -1376,4 +1414,226 @@ fn (mut g Gen) new_label() string {
 
 fn (mut g Gen) emit_label(name string) {
 	g.labels[name] = g.code.len
+}
+
+// ---------------------------------------------------------------------------
+// closure capture analysis
+//
+// A closure (anonymous `fn`) may reference the enclosing function's locals.
+// Since the VM compiles each function with its own frame, those references
+// are resolved by capturing the values at closure-creation time: the compiler
+// scans the body for free variables, registers them as the lambda's leading
+// local slots, and emits loads of their current values before op_closure.
+
+// scan_captures returns the enclosing locals a closure body references, in
+// first-reference order (stable and deterministic for codegen).
+fn (mut g Gen) scan_captures(body []Stmt, fparams []string) []string {
+	mut bound := map[string]bool{}
+	for p in fparams {
+		bound[p] = true
+	}
+	mut caps := []string{}
+	mut seen := map[string]bool{}
+	for st in body {
+		g.scan_stmt(st, mut bound, mut caps, mut seen)
+	}
+	return caps
+}
+
+fn (mut g Gen) maybe_capture(name string, bound map[string]bool, mut caps []string, mut seen map[string]bool) {
+	if name in bound {
+		return // bound inside the closure — a plain local
+	}
+	if name !in g.locals {
+		return // not an enclosing local (global fn/const/enum — resolved elsewhere)
+	}
+	if name !in seen {
+		seen[name] = true
+		caps << name
+	}
+}
+
+fn (mut g Gen) scan_stmt(st Stmt, mut bound map[string]bool, mut caps []string, mut seen map[string]bool) {
+	match st.kind {
+		.expr_stmt {
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+		}
+		.let_stmt {
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+			bound[st.target] = true
+		}
+		.destruct_stmt {
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+			for t in st.destruct_targets {
+				bound[t] = true
+			}
+		}
+		.assign_stmt {
+			// assignment to a name that is not a closure-local references the
+			// enclosing local's captured copy
+			g.maybe_capture(st.target, bound, mut caps, mut seen)
+			bound[st.target] = true
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+		}
+		.index_assign {
+			g.scan_expr(st.base, mut bound, mut caps, mut seen)
+			g.scan_expr(st.idx, mut bound, mut caps, mut seen)
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+		}
+		.field_assign {
+			g.scan_expr(st.base, mut bound, mut caps, mut seen)
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+		}
+		.if_stmt {
+			g.scan_expr(st.cond, mut bound, mut caps, mut seen)
+			for s in st.body {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
+			for s in st.els {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
+		}
+		.match_stmt {
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+			for arm in st.arms {
+				g.scan_expr(arm.val, mut bound, mut caps, mut seen)
+				for s in arm.body {
+					g.scan_stmt(s, mut bound, mut caps, mut seen)
+				}
+			}
+			for s in st.els_body {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
+		}
+		.while_stmt {
+			g.scan_expr(st.cond, mut bound, mut caps, mut seen)
+			for s in st.body {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
+		}
+		.for_range_stmt {
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+			g.scan_expr(st.cond, mut bound, mut caps, mut seen)
+			had := st.target in bound
+			bound[st.target] = true
+			for s in st.body {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
+			if !had {
+				bound.delete(st.target)
+			}
+		}
+		.for_in_stmt {
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+			had := st.target in bound
+			bound[st.target] = true
+			mut had_idx := false
+			if st.idx_target.len > 0 {
+				had_idx = st.idx_target in bound
+				bound[st.idx_target] = true
+			}
+			for s in st.body {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
+			if !had {
+				bound.delete(st.target)
+			}
+			if st.idx_target.len > 0 && !had_idx {
+				bound.delete(st.idx_target)
+			}
+		}
+		.ret_stmt {
+			if st.has_val {
+				g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+			}
+		}
+		.assert_stmt {
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+		}
+		.try_stmt {
+			for s in st.body {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
+			had := st.target in bound
+			bound[st.target] = true
+			for s in st.els {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
+			if !had {
+				bound.delete(st.target)
+			}
+		}
+		.throw_stmt {
+			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+		}
+		.break_stmt, .continue_stmt {}
+	}
+}
+
+fn (mut g Gen) scan_expr(e Expr, mut bound map[string]bool, mut caps []string, mut seen map[string]bool) {
+	match e.kind {
+		.ident {
+			g.maybe_capture(e.name, bound, mut caps, mut seen)
+		}
+		.call {
+			// a call to an enclosing local holding a closure must capture it too
+			g.maybe_capture(e.name, bound, mut caps, mut seen)
+			for a in e.args {
+				g.scan_expr(a, mut bound, mut caps, mut seen)
+			}
+		}
+		.field {
+			g.scan_expr(*e.left, mut bound, mut caps, mut seen)
+		}
+		.method_call {
+			g.scan_expr(*e.left, mut bound, mut caps, mut seen)
+			for a in e.args {
+				g.scan_expr(a, mut bound, mut caps, mut seen)
+			}
+		}
+		.index {
+			g.scan_expr(*e.left, mut bound, mut caps, mut seen)
+			g.scan_expr(*e.right, mut bound, mut caps, mut seen)
+		}
+		.slice {
+			g.scan_expr(*e.left, mut bound, mut caps, mut seen)
+			g.scan_expr(*e.right, mut bound, mut caps, mut seen)
+			g.scan_expr(*e.extra, mut bound, mut caps, mut seen)
+		}
+		.unary {
+			g.scan_expr(*e.right, mut bound, mut caps, mut seen)
+		}
+		.binary {
+			g.scan_expr(*e.left, mut bound, mut caps, mut seen)
+			g.scan_expr(*e.right, mut bound, mut caps, mut seen)
+		}
+		.array_lit {
+			for el in e.elems {
+				g.scan_expr(el, mut bound, mut caps, mut seen)
+			}
+		}
+		.struct_lit {
+			for f in e.fields {
+				g.scan_expr(f.val, mut bound, mut caps, mut seen)
+			}
+		}
+		.anon_fn {
+			// a nested closure: its parameters bind inside it, but references to
+			// enclosing locals still belong to this closure's capture set
+			mut saved := map[string]bool{}
+			for p in e.fparams {
+				saved[p] = p in bound
+				bound[p] = true
+			}
+			for s in e.fn_body {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
+			for p in e.fparams {
+				if !saved[p] {
+					bound.delete(p)
+				}
+			}
+		}
+		else {}
+	}
 }

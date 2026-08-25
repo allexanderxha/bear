@@ -319,7 +319,7 @@ fn test_module_imports() {
 	}
 	assert os.base("a/b/c.vr") == "c.vr"
 	assert os.dir("a/b/c.vr") == "a/b"
-	assert len(os.glob("lib/*.vr")) == 6
+	assert len(os.glob("lib/*.vr")) == 9
 	let tmp = os.join(os.cwd(), "tmp_test.txt")
 	os.write_lines(tmp, ["x", "y"])
 	assert len(os.read_lines(tmp)) == 2
@@ -453,6 +453,79 @@ fn test_time() {
 	} catch e {
 		assert len(e) > 0
 	}
+}
+
+fn test_closure_capture() {
+	// closures capture enclosing locals by value
+	let factor = 3
+	let dbl = fn(x) {
+		return x * factor
+	}
+	assert dbl(7) == 21
+
+	let name = "alice"
+	let age = 30
+	let greet = fn() {
+		return "hi " + name + " age=" + str(age)
+	}
+	assert greet() == "hi alice age=30"
+
+	// capture by value: later changes to the outer var don't affect the closure
+	let counter = 10
+	let read = fn() {
+		return counter
+	}
+	assert read() == 10
+	counter = 99
+	assert read() == 10
+
+	// nested closures capture through both levels
+	let base = 100
+	let outer = fn() {
+		let mid = 5
+		let inner = fn(x) {
+			return base + mid + x
+		}
+		return inner(1)
+	}
+	assert outer() == 106
+
+	// assignment to a captured variable writes the closure's own copy
+	let n = 1
+	let bump = fn() {
+		n = n + 1
+		return n
+	}
+	assert bump() == 2
+	assert n == 1
+
+	// closure stored in a struct, called dynamically
+	let handler = fn() {
+		return "handled"
+	}
+	let rec = { run: handler }
+	assert rec.run() == "handled"
+}
+
+fn test_dynamic_map_keys() {
+	// map keys may be computed expressions, not just string literals
+	let m = {}
+	for i in 0..3 {
+		m["key" + str(i)] = i * 10
+	}
+	assert m["key0"] == 0
+	assert m["key2"] == 20
+	let k = "key1"
+	assert m[k] == 10
+	assert has(m, "key1") == 1
+	assert len(m) == 3
+	delete(m, "key1")
+	assert has(m, "key1") == 0
+	assert len(m) == 2
+	// nested computed access
+	let cfg = { "db": { "host": "localhost", "port": 5432 } }
+	let which = "db"
+	assert cfg[which]["host"] == "localhost"
 }
 
 fn test_failing() {

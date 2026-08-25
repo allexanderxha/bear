@@ -73,3 +73,23 @@ fn env(name) {
 fn exec(cmd) {
 	return build_exec(cmd)
 }
+
+// ext returns the file extension including the dot ("file.txt" -> ".txt").
+fn ext(path) {
+	return path_ext(path)
+}
+
+// abs converts a path to an absolute one.
+fn abs(path) {
+	return path_abs(path)
+}
+
+// rel returns path relative to base ("a/b/c.txt" relative to "a" -> "b/c.txt").
+fn rel(path, base) {
+	return path_rel(path, base)
+}
+
+// exec_full runs a shell command and returns {code, stdout, stderr}.
+fn exec_full(cmd) {
+	return exec_full(cmd)
+}

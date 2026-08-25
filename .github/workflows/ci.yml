@@ -64,3 +64,16 @@ jobs:
           grep -n 'fn test_failing' examples/tests.vr || true
           sed '/fn test_failing/,/^}/d' examples/tests.vr > /tmp/ci_tests.vr
           ./bin/vr test /tmp/ci_tests.vr
+
+      - name: Run stdlib test suite
+        run: |
+          ./bin/vr test examples/stdlib.vr
+
+      - name: LSP smoke test
+        run: |
+          BODY='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+          printf 'Content-Length: %d\r\n\r\n%s' "${#BODY}" "$BODY" | ./bin/vr lsp | grep -q '"id":1' && echo "LSP responded"
+
+      - name: Watch-mode and directory-test smoke
+        run: |
+          ./bin/vr test examples | grep -q 'passed'

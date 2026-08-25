@@ -613,7 +613,16 @@ fn builtin_result_type(name string) TypeInfo {
 		'http_get', 'http_post' { TypeInfo{ kind: .struct_t } }
 		// date/time
 		'now', 'time_ms', 'parse_time' { TypeInfo{ kind: .int_t } }
-		'format_time' { TypeInfo{ kind: .string_t } }
+		'format_time', 'weekday' { TypeInfo{ kind: .string_t } }
+		// regex
+		'regex_match' { TypeInfo{ kind: .int_t } }
+		'regex_find_all', 'regex_split', 'csv_parse' { TypeInfo{ kind: .array_t } }
+		'regex_replace' { TypeInfo{ kind: .string_t } }
+		// crypto/encoding
+		'base64_encode', 'base64_decode', 'sha256', 'md5' { TypeInfo{ kind: .string_t } }
+		// extended HTTP + path/process helpers
+		'http_req', 'exec_full' { TypeInfo{ kind: .struct_t } }
+		'path_ext', 'path_abs', 'path_rel' { TypeInfo{ kind: .string_t } }
 		else { TypeInfo{ kind: .unknown } }
 	}
 }

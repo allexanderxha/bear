@@ -1,0 +1,30 @@
+// regex.vr — regular expressions (part of the VuurRaaf stdlib).
+//
+//   import regex
+//   if regex.match(r"^[a-z]+$", "hello") {
+//       println("all lowercase")
+//   }
+//   for m in regex.find_all(r"\d+", "a1b22c333") {
+//       println(m)   // "1", "22", "333"
+//   }
+//
+// Patterns use RE2 syntax (no backreferences). Invalid patterns throw and
+// can be caught with try/catch.
+
+fn is_match(pattern, s) {
+	return regex_match(pattern, s)
+}
+
+// find_all returns an array of every substring that matches the pattern.
+fn find_all(pattern, s) {
+	return regex_find_all(pattern, s)
+}
+
+// replace substitutes every match with `repl`.
+fn replace(pattern, s, repl) {
+	return regex_replace(pattern, s, repl)
+}
+
+fn split(pattern, s) {
+	return regex_split(pattern, s)
+}

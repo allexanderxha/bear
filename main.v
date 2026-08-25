@@ -73,6 +73,9 @@ fn main() {
 		'repl', 'i' {
 			toolchain_repl() or { die('repl', err) }
 		}
+		'lsp' {
+			toolchain_lsp()
+		}
 		'fmt' {
 			toolchain_fmt(rest) or { die('fmt', err) }
 		}
@@ -190,6 +193,7 @@ fn toolchain_help() {
 	println('  test <file.vr>                           run every test_* function')
 	println('  bench <file.vr> [iterations]             benchmark main()')
 	println('  repl                                     interactive session')
+	println('  lsp                                      language server (JSON-RPC over stdio)')
 	println('  fmt [-w] <file.vr>                       format source')
 	println('  init [name]                              scaffold a project')
 	println('  get <owner/repo | url | ./path>          fetch a package into vendor/')
@@ -358,10 +362,23 @@ fn toolchain_link(args []string) ! {
 
 fn toolchain_run(args []string) ! {
 	if args.len == 0 {
-		return error('usage: vr run <file.vr|file.vbin> [program-args...]')
+		return error('usage: vr run <file.vr|file.vbin> [program-args...]  (add -w to watch for changes)')
 	}
-	f := args[0]
-	prog_args := args[1..]
+	mut watch := false
+	mut rest := args.clone()
+	if rest[0] == '-w' || rest[0] == '--watch' {
+		watch = true
+		rest = rest[1..]
+	}
+	if rest.len == 0 {
+		return error('usage: vr run <file.vr|file.vbin> [program-args...]  (add -w to watch for changes)')
+	}
+	f := rest[0]
+	prog_args := rest[1..]
+	if watch {
+		run_watch(f, prog_args)!
+		return
+	}
 	if f.ends_with('.vbin') {
 		bin := obj.read_bin(f)!
 		vm.run_with_args(bin, 'main', false, prog_args)!
@@ -372,6 +389,32 @@ fn toolchain_run(args []string) ! {
 		return
 	}
 	return error('unsupported file type: ${f} (expected .vr or .vbin)')
+}
+
+// run_watch recompiles and reruns the program whenever the source file (or
+// anything it imports) changes — the classic develop-run-edit loop.
+fn run_watch(f string, prog_args []string) ! {
+	if !f.ends_with('.vr') {
+		return error('watch mode works on .vr source files, got ${f}')
+	}
+	mut last := os.file_last_mod_unix(f)
+	println('watching ${f} (Ctrl-C to stop)')
+	for {
+		// clear the screen between runs for a clean diff of output
+		print('\x1b[2J\x1b[H')
+		println('== ${os.file_name(f)} — ${time.now().custom_format('HH:mm:ss')} ==')
+		run_src_with_args(f, 'main', false, prog_args) or {
+			eprintln('${err.msg()}')
+		}
+		for {
+			time.sleep(400 * time.millisecond)
+			cur := os.file_last_mod_unix(f)
+			if cur != last {
+				last = cur
+				break
+			}
+		}
+	}
 }
 
 fn toolchain_debug(args []string) ! {
@@ -394,9 +437,14 @@ fn toolchain_debug(args []string) ! {
 
 fn toolchain_test(args []string) ! {
 	if args.len == 0 {
-		return error('usage: vr test <file.vr>')
+		return error('usage: vr test <file.vr|dir>')
 	}
-	src := args[0]
+	target := args[0]
+	if os.is_dir(target) {
+		test_dir(target)!
+		return
+	}
+	src := target
 	o := compiler.compile_file(src)!
 	mut tests := []string{}
 	for s in o.symbols {
@@ -430,6 +478,60 @@ fn toolchain_test(args []string) ! {
 	println('')
 	println('${passes} passed, ${fails} failed (${tests.len} total)')
 	if fails > 0 {
+		exit(1)
+	}
+}
+
+// test_dir runs every test_* function in every .vr file under a directory
+// (recursively), so a whole project's suite runs with one command.
+fn test_dir(dir string) ! {
+	files := os.walk_ext(dir, '.vr', os.WalkParams{})
+	mut files_sorted := files.clone()
+	files_sorted.sort()
+	mut total_pass := 0
+	mut total_fail := 0
+	mut file_count := 0
+	for src in files_sorted {
+		if os.file_name(src).starts_with('.') {
+			continue
+		}
+		o := compiler.compile_file(src) or {
+			eprintln('  COMPILE FAIL  ${src}  —  ${err.msg()}')
+			total_fail++
+			continue
+		}
+		mut tests := []string{}
+		for s in o.symbols {
+			if s.name.starts_with('test_') {
+				tests << s.name
+			}
+		}
+		if tests.len == 0 {
+			continue
+		}
+		file_count++
+		println('-- ${src}')
+		tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}_${file_count}.vobj')
+		tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}_${file_count}.vbin')
+		defer {
+			os.rm(tmp_obj) or {}
+			os.rm(tmp_bin) or {}
+		}
+		obj.write(tmp_obj, o)!
+		linker.link([tmp_obj], tmp_bin)!
+		bin := obj.read_bin(tmp_bin)!
+		for t in tests {
+			if run_test(bin, t) {
+				println('  PASS  ${t}')
+				total_pass++
+			} else {
+				total_fail++
+			}
+		}
+	}
+	println('')
+	println('${total_pass} passed, ${total_fail} failed across ${file_count} file(s)')
+	if total_fail > 0 {
 		exit(1)
 	}
 }

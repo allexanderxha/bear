@@ -1,0 +1,61 @@
+{
+	"name": "vuurraaf",
+	"displayName": "VuurRaaf",
+	"description": "Language support for VuurRaaf: syntax highlighting, diagnostics, and go-to-definition via the vr language server.",
+	"version": "0.1.0",
+	"publisher": "vuurraaf",
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.75.0"
+	},
+	"categories": [
+		"Programming Languages",
+		"Linters"
+	],
+	"activationEvents": [
+		"onLanguage:vuurraaf"
+	],
+	"main": "./client/extension.js",
+	"contributes": {
+		"languages": [
+			{
+				"id": "vuurraaf",
+				"aliases": [
+					"VuurRaaf",
+					"vr"
+				],
+				"extensions": [
+					".vr",
+					".vrmm"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "vuurraaf",
+				"scopeName": "source.vuurraaf",
+				"path": "./syntaxes/vuurraaf.tmLanguage.json"
+			}
+		],
+		"configuration": {
+			"title": "VuurRaaf",
+			"properties": {
+				"vuurraaf.toolchainPath": {
+					"type": "string",
+					"default": "vr",
+					"description": "Path to the vr toolchain binary (defaults to `vr` on PATH)."
+				}
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm install"
+	},
+	"dependencies": {
+		"vscode-languageclient": "^8.1.0"
+	},
+	"devDependencies": {
+		"@types/vscode": "^1.75.0"
+	}
+}

@@ -220,6 +220,11 @@ fn (mut l Lexer) next() !Tok {
 			return l.lex_number(line, col)
 		}
 		else {
+			// r"..." raw strings (no escape processing) — handy for regex
+			// patterns like r"\d+" that would otherwise need double escaping
+			if c == `r` && l.peek2() == `\"` {
+				return l.lex_raw_string(line, col)!
+			}
 			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
 				return l.lex_ident(line, col)
 			}
@@ -308,6 +313,21 @@ fn (mut l Lexer) lex_ident(line int, col int) Tok {
 		else { TokKind.ident }
 	}
 	return Tok{ kind: kind, lit: lit, line: line, col: col }
+}
+
+// lex_raw_string reads an r"..." string verbatim: backslashes, quotes and
+// ${...} sequences are all kept literally, so regex patterns pass through
+// untouched. The token is a plain str_lit whose content is the raw text.
+fn (mut l Lexer) lex_raw_string(line int, col int) !Tok {
+	l.advance() // 'r'
+	l.advance() // opening quote
+	start := l.pos
+	for l.pos < l.src.len {
+		if l.advance() == `\"` {
+			return Tok{ kind: .str_lit, lit: l.src[start..l.pos - 1], line: line, col: col }
+		}
+	}
+	return error('unterminated raw string at line ${line}, col ${col}')
 }
 
 fn (mut l Lexer) lex_string(line int, col int) !Tok {

@@ -113,7 +113,7 @@ fn (mut v Vm) json_parse_object(mut p JsonParser) !i64 {
 	p.skip_ws()
 	if p.peek() == `}` {
 		p.pos++
-		v.structs << StructVal{ fields: fields }
+		v.structs << StructVal{ fields: fields, by_name: v.index_fields(fields) }
 		return v.mkstruct_handle(v.structs.len - 1)
 	}
 	for {
@@ -152,7 +152,7 @@ fn (mut v Vm) json_parse_object(mut p JsonParser) !i64 {
 		}
 		return p.error('expected "," or "}" in object')
 	}
-	v.structs << StructVal{ fields: fields }
+	v.structs << StructVal{ fields: fields, by_name: v.index_fields(fields) }
 	return v.mkstruct_handle(v.structs.len - 1)
 }
 

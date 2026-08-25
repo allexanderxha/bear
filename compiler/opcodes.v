@@ -151,3 +151,24 @@ const native_now = 170
 const native_time_ms = 171
 const native_format_time = 172
 const native_parse_time = 173
+
+// regex builtins
+const native_regex_match = 174
+const native_regex_find_all = 175
+const native_regex_replace = 176
+const native_regex_split = 177
+
+// crypto/encoding builtins
+const native_base64_encode = 178
+const native_base64_decode = 179
+const native_sha256 = 180
+const native_md5 = 181
+const native_csv_parse = 182
+
+// extended HTTP + filesystem/process builtins
+const native_http_req = 183
+const native_path_ext = 184
+const native_path_abs = 185
+const native_path_rel = 186
+const native_exec_full = 187
+const native_weekday = 188

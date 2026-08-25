@@ -1,0 +1,23 @@
+// crypto.vr — hashing and encoding (part of the VuurRaaf stdlib).
+//
+//   import crypto
+//   println(crypto.sha256("hello"))
+//   println(crypto.md5("hello"))
+//   println(crypto.base64_encode("hello"))   // aGVsbG8=
+//   println(crypto.base64_decode("aGVsbG8="))
+
+fn sha256(s) {
+	return sha256(s)
+}
+
+fn md5(s) {
+	return md5(s)
+}
+
+fn base64_encode(s) {
+	return base64_encode(s)
+}
+
+fn base64_decode(s) {
+	return base64_decode(s)
+}

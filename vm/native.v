@@ -16,6 +16,11 @@ import obj
 import compiler
 import assembler
 import linker
+import regex
+import encoding.base64
+import crypto.sha256
+import crypto.md5
+import encoding.csv
 
 fn (mut v Vm) native(id int, _argc int) ! {
 	match id {
@@ -248,11 +253,11 @@ fn (mut v Vm) native(id int, _argc int) ! {
 			if v.is_arr(x) && v.valid_arr_handle(x) {
 				v.arrays << v.arrays[v.hand(x)].clone()
 				v.push(v.mkarr(v.arrays.len - 1))!
-			} else if v.is_struct(x) && v.valid_struct_handle(x) {
-				s := v.structs[v.hand(x)]
-				v.structs << StructVal{ fields: s.fields.clone() }
-				v.push(v.mkstruct_handle(v.structs.len - 1))!
-			} else if v.is_str(x) && v.valid_handle(x) {
+		} else if v.is_struct(x) && v.valid_struct_handle(x) {
+			s := v.structs[v.hand(x)]
+			v.structs << StructVal{ fields: s.fields.clone(), by_name: s.by_name.clone() }
+			v.push(v.mkstruct_handle(v.structs.len - 1))!
+		} else if v.is_str(x) && v.valid_handle(x) {
 				v.push(v.alloc_str(v.strings[v.hand(x)]))!
 			} else if v.is_float(x) {
 				v.push(v.push_float(v.fval(x)))!
@@ -679,10 +684,206 @@ fn (mut v Vm) native(id int, _argc int) ! {
 			t := time.parse(s) or { return error('parse_time: ${err.msg()}') }
 			v.push(v.enc_int(t.unix()))!
 		}
+		native_weekday {
+			t := v.dec_int(v.pop()!)
+			v.push(v.alloc_str(time.unix(t).weekday_str()))!
+		}
+		// -------------------------------------------------------------------
+		// regex — RE2-style patterns via V's regex module. Every call compiles
+		// the pattern fresh; the VuurRaaf-level module can cache if it needs to.
+		native_regex_match {
+			s := v.pop_str()!
+			pat := v.pop_str()!
+			mut re := regex.regex_opt(pat) or { return error('regex: ${err.msg()}') }
+			v.push(v.enc_int(bool_i64(re.matches_string(s))))!
+		}
+		native_regex_find_all {
+			s := v.pop_str()!
+			pat := v.pop_str()!
+			mut re := regex.regex_opt(pat) or { return error('regex: ${err.msg()}') }
+			matches := re.find_all_str(s)
+			mut arr := []i64{}
+			for m in matches {
+				v.strings << m
+				arr << v.mkstr(v.strings.len - 1)
+			}
+			v.arrays << arr
+			v.push(v.mkarr(v.arrays.len - 1))!
+		}
+		native_regex_replace {
+			repl := v.pop_str()!
+			s := v.pop_str()!
+			pat := v.pop_str()!
+			mut re := regex.regex_opt(pat) or { return error('regex: ${err.msg()}') }
+			v.push(v.alloc_str(re.replace(s, repl)))!
+		}
+		native_regex_split {
+			s := v.pop_str()!
+			pat := v.pop_str()!
+			mut re := regex.regex_opt(pat) or { return error('regex: ${err.msg()}') }
+			parts := re.split(s)
+			mut arr := []i64{}
+			for p in parts {
+				v.strings << p
+				arr << v.mkstr(v.strings.len - 1)
+			}
+			v.arrays << arr
+			v.push(v.mkarr(v.arrays.len - 1))!
+		}
+		// -------------------------------------------------------------------
+		// base64 + hashes
+		native_base64_encode {
+			s := v.pop_str()!
+			v.push(v.alloc_str(base64.encode_str(s)))!
+		}
+		native_base64_decode {
+			s := v.pop_str()!
+			v.push(v.alloc_str(base64.decode_str(s)))!
+		}
+		native_sha256 {
+			s := v.pop_str()!
+			v.push(v.alloc_str(sha256.hexhash(s)))!
+		}
+		native_md5 {
+			s := v.pop_str()!
+			v.push(v.alloc_str(md5.hexhash(s)))!
+		}
+		native_csv_parse {
+			s := v.pop_str()!
+			mut r := csv.new_reader(s)
+			// read() yields one row ([]string) at a time until EOF
+			mut rows := [][]string{}
+			for {
+				row := r.read() or { break }
+				if row.len == 0 {
+					break
+				}
+				rows << row
+			}
+			mut outer := []i64{}
+			for row in rows {
+				mut inner := []i64{}
+				for cell in row {
+					v.strings << cell
+					inner << v.mkstr(v.strings.len - 1)
+				}
+				v.arrays << inner
+				outer << v.mkarr(v.arrays.len - 1)
+			}
+			v.arrays << outer
+			v.push(v.mkarr(v.arrays.len - 1))!
+		}
+		// -------------------------------------------------------------------
+		// extended HTTP: any method, custom headers (a {name: value} struct),
+		// and a per-request timeout in milliseconds
+		native_http_req {
+			timeout_ms := int(v.dec_int(v.pop()!))
+			headers_h := v.pop()!
+			data := v.pop_str()!
+			url := v.pop_str()!
+			method := v.pop_str()!
+			mut h := http.new_header()
+			if v.is_struct(headers_h) && v.valid_struct_handle(headers_h) {
+				for f in v.structs[v.hand(headers_h)].fields {
+					if v.is_str(f.val) && v.valid_handle(f.val) {
+						h.add_custom(f.name, v.strings[v.hand(f.val)]) or {}
+					}
+				}
+			}
+			m := match method.to_upper() {
+				'GET' { http.Method.get }
+				'POST' { http.Method.post }
+				'PUT' { http.Method.put }
+				'DELETE' { http.Method.delete }
+				'PATCH' { http.Method.patch }
+				'HEAD' { http.Method.head }
+				else { return error('http_req: unsupported method "${method}"') }
+			}
+			resp := http.fetch(method: m, url: url, data: data, header: h,
+				read_timeout: i64(timeout_ms) * time.millisecond) or {
+				return error('http_req: ${err.msg()}')
+			}
+			v.push_http_response(resp)!
+		}
+		// -------------------------------------------------------------------
+		// filesystem path helpers
+		native_path_ext {
+			p := v.pop_str()!
+			v.push(v.alloc_str(os.file_ext(p)))!
+		}
+		native_path_abs {
+			p := v.pop_str()!
+			v.push(v.alloc_str(os.abs_path(p)))!
+		}
+		native_path_rel {
+			base := v.pop_str()!
+			p := v.pop_str()!
+			v.push(v.alloc_str(v.rel_path(p, base)))!
+		}
+		// -------------------------------------------------------------------
+		// process spawn with separate stdout/stderr pipes
+		native_exec_full {
+			cmd := v.pop_str()!
+			mut code := 0
+			mut out := ''
+			mut errs := ''
+			if os.user_os() == 'windows' {
+				res := os.execute(cmd)
+				code = res.exit_code
+				out = res.output
+			} else {
+				mut p := os.new_process('sh')
+				p.set_args(['-c', cmd])
+				p.use_stdio_ctl = true
+				p.run()
+				p.wait()
+				if p.err.len > 0 {
+					return error('exec_full: ${p.err}')
+				}
+				code = p.code
+				out = p.stdout_slurp()
+				errs = p.stderr_slurp()
+			}
+			out_h := v.alloc_str(out)
+			err_h := v.alloc_str(errs)
+			mut fields := []Field{len: 3}
+			fields[0] = Field{ name: 'code', val: v.enc_int(i64(code)) }
+			fields[1] = Field{ name: 'stdout', val: out_h }
+			fields[2] = Field{ name: 'stderr', val: err_h }
+			v.structs << StructVal{ fields: fields, by_name: v.index_fields(fields) }
+			v.push(v.mkstruct_handle(v.structs.len - 1))!
+		}
 		else {
 			return error('unknown native builtin ${id}')
 		}
 	}
+}
+
+// rel_path computes a relative path from `base` to `p` (both absolutized),
+// e.g. rel_path("/a/b/c.txt", "/a") == "b/c.txt". Used by os.rel().
+fn (v Vm) rel_path(p string, base string) string {
+	ap := os.abs_path(p).replace('\\', '/')
+	ab := os.abs_path(base).replace('\\', '/')
+	if ap == ab {
+		return '.'
+	}
+	aparts := ap.split('/')
+	bparts := ab.split('/')
+	mut i := 0
+	for i < aparts.len && i < bparts.len && aparts[i] == bparts[i] {
+		i++
+	}
+	mut out := []string{}
+	for _ in i..bparts.len {
+		out << '..'
+	}
+	for j in i..aparts.len {
+		out << aparts[j]
+	}
+	if out.len == 0 {
+		return '.'
+	}
+	return out.join('/')
 }
 
 // push_http_response wraps an HTTP response as a {status, body} struct value
@@ -692,7 +893,7 @@ fn (mut v Vm) push_http_response(resp http.Response) ! {
 	mut fields := []Field{len: 2}
 	fields[0] = Field{ name: 'status', val: v.enc_int(i64(resp.status_code)) }
 	fields[1] = Field{ name: 'body', val: body_h }
-	v.structs << StructVal{ fields: fields }
+	v.structs << StructVal{ fields: fields, by_name: v.index_fields(fields) }
 	v.push(v.mkstruct_handle(v.structs.len - 1))!
 }
 
