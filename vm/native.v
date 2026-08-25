@@ -236,16 +236,11 @@ fn (mut v Vm) native(id int, _argc int) ! {
 				return error('sort() expects an array')
 			}
 			mut a := v.arrays[v.hand(h)]
-			// insertion sort by numeric value
-			for i in 1..a.len {
-				key := a[i]
-				mut j := i - 1
-				for j >= 0 && v.num_gt(a[j], key) {
-					a[j + 1] = a[j]
-					j--
-				}
-				a[j + 1] = key
-			}
+			// merge sort: guaranteed O(n log n) (insertion sort was O(n^2) on
+			// large or reversed inputs) and stable, so equal elements keep
+			// their original order
+			mut tmp := []i64{len: a.len}
+			v.merge_sort(mut a, mut tmp, 0, a.len)
 			v.push(h)!
 		}
 		native_clone {
@@ -1097,6 +1092,45 @@ fn (mut v Vm) str_method(name string, argc int) ! {
 		return
 	}
 	return error('unknown string method "${name}"')
+}
+
+// merge_sort sorts a[lo..hi) ascending by numeric value, using tmp as the
+// scratch buffer (must be at least hi long). It is stable: equal elements
+// keep their relative order.
+fn (mut v Vm) merge_sort(mut a []i64, mut tmp []i64, lo int, hi int) {
+	if hi - lo <= 1 {
+		return
+	}
+	mid := lo + (hi - lo) / 2
+	v.merge_sort(mut a, mut tmp, lo, mid)
+	v.merge_sort(mut a, mut tmp, mid, hi)
+	mut i := lo
+	mut j := mid
+	mut k := lo
+	for i < mid && j < hi {
+		if !v.num_gt(a[i], a[j]) {
+			// a[i] <= a[j]: take from the left half (equal -> left, so stable)
+			tmp[k] = a[i]
+			i++
+		} else {
+			tmp[k] = a[j]
+			j++
+		}
+		k++
+	}
+	for i < mid {
+		tmp[k] = a[i]
+		i++
+		k++
+	}
+	for j < hi {
+		tmp[k] = a[j]
+		j++
+		k++
+	}
+	for x in lo..hi {
+		a[x] = tmp[x]
+	}
 }
 
 // num_gt compares two values by their numeric value (int or float).

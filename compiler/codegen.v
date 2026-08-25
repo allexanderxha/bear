@@ -35,6 +35,7 @@ mut:
 	enum_vals map[string]int         // 'Enum.variant' -> integer value
 	consts    map[string]i64         // constant name -> integer value
 	lines     []obj.LineInfo         // code offset -> source line (debug info)
+	dbg_locals []obj.DbgLocal        // per-function local name -> stack slot (debugger)
 	local_cnt int
 	argc      int
 	cur_fn    string
@@ -120,6 +121,11 @@ fn gen(prog Program) !obj.Obj {
 		for l in imported.lines {
 			g.lines << obj.LineInfo{ off: u32(code_off) + l.off, line: l.line }
 		}
+		// merge debug locals: module-internal function names get the same
+		// prefix as their symbols so the debugger can resolve them
+		for l in imported.locals {
+			g.dbg_locals << obj.DbgLocal{ fn: prefix + l.fn, name: l.name, slot: l.slot }
+		}
 	}
 	for fd in prog.fns {
 		g.captures = []string{} // top-level functions capture nothing
@@ -131,6 +137,7 @@ fn gen(prog Program) !obj.Obj {
 		code:    g.code
 		relocs:  g.relocs
 		lines:   g.lines
+		locals:  g.dbg_locals
 	}
 }
 
@@ -230,6 +237,10 @@ fn (mut g Gen) gen_fn(fd FnDecl) ! {
 	}
 	g.fixups.clear()
 	g.labels.clear()
+	// snapshot the live locals as debug info for the debugger: name -> slot
+	for name, slot in g.locals {
+		g.dbg_locals << obj.DbgLocal{ fn: sym, name: name, slot: slot }
+	}
 	g.cur_fn = ''
 }
 

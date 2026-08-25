@@ -38,6 +38,7 @@ pub mut:
 	code    []u8
 	relocs  []Reloc
 	lines   []LineInfo
+	locals  []DbgLocal
 }
 
 pub struct BinFn {
@@ -54,12 +55,23 @@ pub mut:
 	line int
 }
 
+// DbgLocal is one named local variable of a function (debug info for the
+// interactive debugger): the VM can resolve `print <name>` to the value at
+// stack slot bp+slot while stopped inside `fn`.
+pub struct DbgLocal {
+pub mut:
+	fn   string
+	name string
+	slot int
+}
+
 pub struct Bin {
 pub mut:
 	fns     []BinFn
 	strings []string
 	code    []u8
 	lines   []LineInfo
+	locals  []DbgLocal
 }
 
 // ---------------------------------------------------------------------------
@@ -143,10 +155,14 @@ fn (mut r Reader) read_str() !string {
 // ---------------------------------------------------------------------------
 // VROBJ
 
+// format_version is 2 since v0.2: a debug-locals section was appended after
+// the line table. Version 1 files (no locals) still read fine.
+const format_version = u8(2)
+
 pub fn write(path string, o Obj) ! {
 	mut b := []u8{}
 	b << magic.bytes()
-	b << u8(1) // format version
+	b << format_version
 	b << encode_u32(u32(o.symbols.len))
 	for s in o.symbols {
 		b << encode_u32(u32(s.name.len))
@@ -172,6 +188,14 @@ pub fn write(path string, o Obj) ! {
 		b << encode_u32(l.off)
 		b << encode_i64(i64(l.line))
 	}
+	b << encode_u32(u32(o.locals.len))
+	for l in o.locals {
+		b << encode_u32(u32(l.fn.len))
+		b << l.fn.bytes()
+		b << encode_u32(u32(l.name.len))
+		b << l.name.bytes()
+		b << encode_i64(i64(l.slot))
+	}
 	os.write_bytes(path, b)!
 }
 
@@ -181,7 +205,7 @@ pub fn read(path string) !Obj {
 		return error('not a VROBJ file: ${path}')
 	}
 	mut r := Reader{ b: b, pos: magic.len }
-	_ := r.u8_()! // version
+	ver := r.u8_()! // format version
 	mut o := Obj{}
 	nsym := int(r.u32_()!)
 	for _ in 0..nsym {
@@ -212,6 +236,15 @@ pub fn read(path string) !Obj {
 		line := int(r.i64_()!)
 		o.lines << LineInfo{ off: off, line: line }
 	}
+	if ver >= 2 {
+		nlocals := int(r.u32_()!)
+		for _ in 0..nlocals {
+			fn_name := r.read_str()!
+			name := r.read_str()!
+			slot := int(r.i64_()!)
+			o.locals << DbgLocal{ fn: fn_name, name: name, slot: slot }
+		}
+	}
 	return o
 }
 
@@ -221,7 +254,7 @@ pub fn read(path string) !Obj {
 pub fn write_bin(path string, bin Bin) ! {
 	mut b := []u8{}
 	b << bin_magic.bytes()
-	b << u8(1) // format version
+	b << format_version
 	b << encode_u32(u32(bin.fns.len))
 	for f in bin.fns {
 		b << encode_u32(u32(f.name.len))
@@ -240,6 +273,14 @@ pub fn write_bin(path string, bin Bin) ! {
 		b << encode_u32(l.off)
 		b << encode_i64(i64(l.line))
 	}
+	b << encode_u32(u32(bin.locals.len))
+	for l in bin.locals {
+		b << encode_u32(u32(l.fn.len))
+		b << l.fn.bytes()
+		b << encode_u32(u32(l.name.len))
+		b << l.name.bytes()
+		b << encode_i64(i64(l.slot))
+	}
 	os.write_bytes(path, b)!
 }
 
@@ -249,7 +290,7 @@ pub fn read_bin(path string) !Bin {
 		return error('not a VRBIN file: ${path}')
 	}
 	mut r := Reader{ b: b, pos: bin_magic.len }
-	_ := r.u8_()! // version
+	ver := r.u8_()! // format version
 	mut bin := Bin{}
 	nfn := int(r.u32_()!)
 	for _ in 0..nfn {
@@ -272,6 +313,15 @@ pub fn read_bin(path string) !Bin {
 		off := r.u32_()!
 		line := int(r.i64_()!)
 		bin.lines << LineInfo{ off: off, line: line }
+	}
+	if ver >= 2 {
+		nlocals := int(r.u32_()!)
+		for _ in 0..nlocals {
+			fn_name := r.read_str()!
+			name := r.read_str()!
+			slot := int(r.i64_()!)
+			bin.locals << DbgLocal{ fn: fn_name, name: name, slot: slot }
+		}
 	}
 	return bin
 }

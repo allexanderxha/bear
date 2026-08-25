@@ -8,6 +8,19 @@ module vm
 import obj
 import math
 
+// RunOpts configures a VM run: tracing, program arguments, the build root,
+// the interactive debugger, an instruction budget, and profiling.
+pub struct RunOpts {
+pub:
+	trace       bool
+	args        []string = []
+	root        string
+	debug       bool // start the interactive debugger (vr debug)
+	breakpoints []int // source lines to stop at; empty + debug = stop at entry
+	max_ops     i64 // instruction budget; 0 = unlimited
+	profile     bool // count instructions/calls per function
+}
+
 // run executes the function named `entry` from the executable `bin` and
 // returns its return value (0 if it never returns one).
 pub fn run(bin obj.Bin, entry string, trace bool) !i64 {
@@ -17,27 +30,95 @@ pub fn run(bin obj.Bin, entry string, trace bool) !i64 {
 // run_with_args is run() with command-line arguments exposed to the program
 // via the `args()` builtin.
 pub fn run_with_args(bin obj.Bin, entry string, trace bool, args []string) !i64 {
-	return run_internal(bin, entry, trace, args, '')!
+	return run_opts(bin, entry, RunOpts{ trace: trace, args: args })!
 }
 
 // run_build executes a .vrmm build module: the entry target receives the
 // extra CLI arguments via `args()`, and `build_root()` reports the module's
 // own directory so scripts can find files regardless of the working directory.
 pub fn run_build(bin obj.Bin, entry string, args []string, root string) !i64 {
-	return run_internal(bin, entry, false, args, root)!
+	return run_opts(bin, entry, RunOpts{ args: args, root: root })!
 }
 
-fn run_internal(bin obj.Bin, entry string, trace bool, args []string, root string) !i64 {
+// run_opts runs the program with full control over the runtime options.
+pub fn run_opts(bin obj.Bin, entry string, opts RunOpts) !i64 {
+	mut v := new_vm(bin, entry, opts)!
+	return v.run_result()!
+}
+
+// run_debug runs the program under the interactive debugger, stopping at the
+// given source-line breakpoints (or at entry when none are given).
+pub fn run_debug(bin obj.Bin, entry string, breakpoints []int, args []string) !i64 {
+	return run_opts(bin, entry, RunOpts{ args: args, debug: true, breakpoints: breakpoints })!
+}
+
+// ProfileRow is one function's profile totals.
+pub struct ProfileRow {
+pub:
+	name  string
+	calls u64
+	instr u64
+}
+
+// ProfileReport is the result of a profiled run: per-function instruction
+// and call counts, sorted by instructions executed (hot first).
+pub struct ProfileReport {
+pub:
+	rows  []ProfileRow
+	total u64 // instructions executed across all functions
+}
+
+// run_profiled executes the program counting instructions and calls per
+// function, and returns the report.
+pub fn run_profiled(bin obj.Bin, entry string, args []string) !ProfileReport {
+	mut v := new_vm(bin, entry, RunOpts{ args: args, profile: true })!
+	_ = v.run_result()!
+	mut rows := []ProfileRow{}
+	for i in 0..v.fns.len {
+		rows << ProfileRow{ name: v.fns[i].name, calls: v.prof_calls[i], instr: v.prof_instr[i] }
+	}
+	rows.sort_with_compare(fn (a &ProfileRow, b &ProfileRow) int {
+		if a.instr > b.instr {
+			return -1
+		}
+		if a.instr < b.instr {
+			return 1
+		}
+		return 0
+	})
+	mut total := u64(0)
+	for r in rows {
+		total += r.instr
+	}
+	return ProfileReport{ rows: rows, total: total }
+}
+
+// new_vm builds a configured Vm for the entry function, pushing the synthetic
+// entry frame and pointing ip at the entry point.
+fn new_vm(bin obj.Bin, entry string, opts RunOpts) !Vm {
 	mut v := Vm{
 		code:       bin.code
 		strings:    bin.strings.clone()
 		stack:      []i64{len: stack_cap}
-		trace:      trace
-		prog_args:  args
+		trace:      opts.trace
+		prog_args:  opts.args
 		lines:      bin.lines
 		fns:        bin.fns
 		const_strs: bin.strings.len
-		build_root: root
+		build_root: opts.root
+		dbg_locals: bin.locals
+		max_ops:    opts.max_ops
+	}
+	if opts.profile {
+		v.profiling = true
+		v.prof_instr = []u64{len: v.fns.len}
+		v.prof_calls = []u64{len: v.fns.len}
+		v.fn_of_ip = v.build_fn_of_ip()
+	}
+	if opts.debug {
+		v.dbg.enabled = true
+		v.dbg.breakpoints = opts.breakpoints.clone()
+		v.dbg.mode = if opts.breakpoints.len > 0 { DbgMode.run } else { DbgMode.step }
 	}
 	mut entry_ip := -1
 	for f in bin.fns {
@@ -61,6 +142,11 @@ fn run_internal(bin obj.Bin, entry string, trace bool, args []string, root strin
 	v.sp++
 	v.bp = v.sp
 	v.ip = entry_ip
+	return v
+}
+
+// run_result executes until halt/error and extracts the program's result.
+fn (mut v Vm) run_result() !i64 {
 	v.exec() or {
 		return error('${err.msg()} at ${v.where()}\n${v.stack_trace()}')
 	}
@@ -71,6 +157,29 @@ fn run_internal(bin obj.Bin, entry string, trace bool, args []string, root strin
 		return v.dec_int(v.stack[0])
 	}
 	return 0
+}
+
+// build_fn_of_ip precomputes, for every code offset, the index of the
+// function that contains it, so profiling adds one array lookup per opcode.
+// Function tables are not guaranteed to be in entry order (the linker builds
+// them from a map), so entries are sorted by offset first.
+fn (v Vm) build_fn_of_ip() []int {
+	mut out := []int{len: v.code.len}
+	mut fes := []FnEntry{}
+	for i, f in v.fns {
+		fes << FnEntry{ idx: i, entry: f.entry }
+	}
+	fes.sort_with_compare(fn (a &FnEntry, b &FnEntry) int {
+		return a.entry - b.entry
+	})
+	mut fi := 0
+	for ip in 0..v.code.len {
+		for fi + 1 < fes.len && fes[fi + 1].entry <= ip {
+			fi++
+		}
+		out[ip] = fes[fi].idx
+	}
+	return out
 }
 
 // where returns a source-level location for the current instruction pointer:
@@ -144,6 +253,18 @@ fn (mut v Vm) exec() ! {
 		op := v.code[v.ip]
 		if v.trace {
 			v.trace_op(op)
+		}
+		if v.profiling {
+			v.prof_instr[v.fn_of_ip[v.ip]]++
+		}
+		if v.max_ops > 0 {
+			v.ops++
+			if v.ops > v.max_ops {
+				return error('max ops exceeded (${v.max_ops}) — possible infinite loop')
+			}
+		}
+		if v.dbg.enabled {
+			v.dbg_tick()!
 		}
 		match op {
 			op_halt {
@@ -305,6 +426,9 @@ fn (mut v Vm) exec() ! {
 				v.ip++
 				target := int(v.read_i64())
 				argc := int(v.read_i64())
+				if v.profiling {
+					v.prof_calls[v.fn_of_ip[target]]++
+				}
 				v.call(target, argc)
 			}
 			op_ret {
@@ -633,6 +757,9 @@ fn (mut v Vm) exec() ! {
 					v.stack[c + i] = cl.captured[i]
 				}
 				v.sp = c + n + argc
+				if v.profiling {
+					v.prof_calls[v.fn_of_ip[cl.entry]]++
+				}
 				v.call(cl.entry, argc + n)
 			}
 			op_argc {

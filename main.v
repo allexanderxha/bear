@@ -61,9 +61,15 @@ fn main() {
 		'run', 'r' {
 			toolchain_run(rest) or { die('run', err) }
 		}
-		'debug', 'd' {
-			toolchain_debug(rest) or { die('debug', err) }
-		}
+	'debug', 'd' {
+		toolchain_debug(rest) or { die('debug', err) }
+	}
+	'profile', 'p' {
+		toolchain_profile(rest) or { die('profile', err) }
+	}
+	'fuzz' {
+		toolchain_fuzz(rest) or { die('fuzz', err) }
+	}
 		'test', 't' {
 			toolchain_test(rest) or { die('test', err) }
 		}
@@ -189,8 +195,10 @@ fn toolchain_help() {
 	println('  assemble <file.vasm> [-o out.vobj]       assemble raw bytecode to an object file')
 	println('  link <a.vobj> [more.vobj ...] [-o out]   link objects into an executable')
 	println('  run <file.vr|file.vbin>                  compile, link and run (or run a binary)')
-	println('  debug <file.vr|file.vbin>                run with an instruction trace')
-	println('  test <file.vr>                           run every test_* function')
+	println('  debug <file.vr|file.vbin>                interactive debugger (breakpoints, step, locals)')
+	println('  profile <file.vr|file.vbin>              run and report per-function instruction counts')
+	println('  fuzz [--seed N] [--iters N]              fuzz the compiler and VM for crashes/hangs')
+	println('  test <file.vr|dir>                       run every test_* function')
 	println('  bench <file.vr> [iterations]             benchmark main()')
 	println('  repl                                     interactive session')
 	println('  lsp                                      language server (JSON-RPC over stdio)')
@@ -362,16 +370,28 @@ fn toolchain_link(args []string) ! {
 
 fn toolchain_run(args []string) ! {
 	if args.len == 0 {
-		return error('usage: vr run <file.vr|file.vbin> [program-args...]  (add -w to watch for changes)')
+		return error('usage: vr run <file.vr|file.vbin> [program-args...]  (add -w to watch, --profile to profile, --max-ops N to cap instructions)')
 	}
 	mut watch := false
+	mut profile := false
+	mut max_ops := i64(0)
 	mut rest := args.clone()
-	if rest[0] == '-w' || rest[0] == '--watch' {
-		watch = true
-		rest = rest[1..]
+	for rest.len > 0 && (rest[0].starts_with('-') && rest[0] != '-') {
+		if rest[0] == '-w' || rest[0] == '--watch' {
+			watch = true
+			rest = rest[1..]
+		} else if rest[0] == '--profile' {
+			profile = true
+			rest = rest[1..]
+		} else if rest[0] == '--max-ops' && rest.len > 1 {
+			max_ops = rest[1].i64()
+			rest = rest[2..]
+		} else {
+			return error('unknown flag "${rest[0]}" (supported: -w, --profile, --max-ops N)')
+		}
 	}
 	if rest.len == 0 {
-		return error('usage: vr run <file.vr|file.vbin> [program-args...]  (add -w to watch for changes)')
+		return error('usage: vr run <file.vr|file.vbin> [program-args...]  (add -w to watch, --profile to profile, --max-ops N to cap instructions)')
 	}
 	f := rest[0]
 	prog_args := rest[1..]
@@ -381,14 +401,74 @@ fn toolchain_run(args []string) ! {
 	}
 	if f.ends_with('.vbin') {
 		bin := obj.read_bin(f)!
-		vm.run_with_args(bin, 'main', false, prog_args)!
+		if profile {
+			print_profile(vm.run_profiled(bin, 'main', prog_args)!, f)
+			return
+		}
+		vm.run_opts(bin, 'main', vm.RunOpts{ args: prog_args, max_ops: max_ops })!
 		return
 	}
 	if f.ends_with('.vr') {
-		run_src_with_args(f, 'main', false, prog_args)!
+		if profile {
+			run_src_profiled(f, prog_args)!
+			return
+		}
+		run_src_with_args(f, 'main', false, prog_args, max_ops)!
 		return
 	}
 	return error('unsupported file type: ${f} (expected .vr or .vbin)')
+}
+
+// print_profile renders the profiled run's report as a table.
+fn print_profile(rep vm.ProfileReport, f string) {
+	println('profile: ${f}')
+	println('${pad_right('function', 24)}${pad_left('calls', 8)}${pad_left('instr', 12)}${pad_left('%', 7)}')
+	for r in rep.rows {
+		if r.instr == 0 && r.calls == 0 {
+			continue
+		}
+		pct := if rep.total > 0 { 100.0 * f64(r.instr) / f64(rep.total) } else { 0.0 }
+		println('${pad_right(r.name, 24)}${pad_left(r.calls.str(), 8)}${pad_left(r.instr.str(), 12)}${pad_left(pct_fmt(pct) + '%', 7)}')
+	}
+	println('${pad_right('total', 24)}${pad_left(rep.total.str(), 12)}')
+}
+
+// pad_left pads s with spaces on the left to reach width w.
+fn pad_left(s string, w int) string {
+	mut out := s
+	for out.len < w {
+		out = ' ' + out
+	}
+	return out
+}
+
+// pad_right pads s with spaces on the right to reach width w.
+fn pad_right(s string, w int) string {
+	mut out := s
+	for out.len < w {
+		out += ' '
+	}
+	return out
+}
+
+// pct_fmt renders a percentage with one decimal.
+fn pct_fmt(p f64) string {
+	return '${p:.1f}'
+}
+
+// run_src_profiled compiles+links a source file and runs it with profiling.
+fn run_src_profiled(src string, prog_args []string) ! {
+	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
+	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
+	defer {
+		os.rm(tmp_obj) or {}
+		os.rm(tmp_bin) or {}
+	}
+	o := compiler.compile_file(src)!
+	obj.write(tmp_obj, o)!
+	linker.link([tmp_obj], tmp_bin)!
+	bin := obj.read_bin(tmp_bin)!
+	print_profile(vm.run_profiled(bin, 'main', prog_args)!, src)
 }
 
 // run_watch recompiles and reruns the program whenever the source file (or
@@ -403,7 +483,7 @@ fn run_watch(f string, prog_args []string) ! {
 		// clear the screen between runs for a clean diff of output
 		print('\x1b[2J\x1b[H')
 		println('== ${os.file_name(f)} — ${time.now().custom_format('HH:mm:ss')} ==')
-		run_src_with_args(f, 'main', false, prog_args) or {
+		run_src_with_args(f, 'main', false, prog_args, 0) or {
 			eprintln('${err.msg()}')
 		}
 		for {
@@ -417,22 +497,78 @@ fn run_watch(f string, prog_args []string) ! {
 	}
 }
 
+// toolchain_debug starts the interactive debugger: run to the first
+// --break <line>, then accept commands (continue/step/next/finish/print/...).
+// With no breakpoints it stops at program entry so breakpoints can be set
+// before anything runs. --trace keeps the old full instruction trace.
 fn toolchain_debug(args []string) ! {
-	if args.len == 0 {
-		return error('usage: vr debug <file.vr|file.vbin>')
+	mut f := ''
+	mut bps := []int{}
+	mut trace := false
+	mut i := 0
+	for i < args.len {
+		a := args[i]
+		if a == '--break' && i + 1 < args.len {
+			bps << args[i + 1].int()
+			i += 2
+		} else if a == '--trace' {
+			trace = true
+			i++
+		} else if f == '' {
+			f = a
+			i++
+		} else {
+			return error('unexpected argument "${a}" (usage: vr debug <file> [--break N]... [--trace])')
+		}
 	}
-	f := args[0]
-	println('debug: tracing execution of ${f}')
+	if f == '' {
+		return error('usage: vr debug <file.vr|file.vbin> [--break N]... [--trace]')
+	}
 	if f.ends_with('.vbin') {
 		bin := obj.read_bin(f)!
-		vm.run(bin, 'main', true)!
+		vm.run_opts(bin, 'main', vm.RunOpts{ debug: true, breakpoints: bps, trace: trace })!
 		return
 	}
 	if f.ends_with('.vr') {
-		run_src(f, 'main', true)!
+		run_src_debug(f, bps, trace)!
 		return
 	}
 	return error('unsupported file type: ${f} (expected .vr or .vbin)')
+}
+
+// toolchain_profile is `vr profile <file> [args...]` — run with per-function
+// instruction/call counting and print the hot-function report.
+fn toolchain_profile(args []string) ! {
+	if args.len == 0 {
+		return error('usage: vr profile <file.vr|file.vbin> [program-args...]')
+	}
+	f := args[0]
+	prog_args := args[1..]
+	if f.ends_with('.vbin') {
+		bin := obj.read_bin(f)!
+		print_profile(vm.run_profiled(bin, 'main', prog_args)!, f)
+		return
+	}
+	if f.ends_with('.vr') {
+		run_src_profiled(f, prog_args)!
+		return
+	}
+	return error('unsupported file type: ${f} (expected .vr or .vbin)')
+}
+
+// run_src_debug compiles+links a source file and runs it under the debugger.
+fn run_src_debug(src string, bps []int, trace bool) ! {
+	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
+	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
+	defer {
+		os.rm(tmp_obj) or {}
+		os.rm(tmp_bin) or {}
+	}
+	o := compiler.compile_file(src)!
+	obj.write(tmp_obj, o)!
+	linker.link([tmp_obj], tmp_bin)!
+	bin := obj.read_bin(tmp_bin)!
+	vm.run_opts(bin, 'main', vm.RunOpts{ debug: true, breakpoints: bps, trace: trace })!
 }
 
 fn toolchain_test(args []string) ! {
@@ -573,10 +709,10 @@ fn toolchain_bench(args []string) ! {
 }
 
 fn run_src(src string, entry string, trace bool) ! {
-	run_src_with_args(src, entry, trace, []string{})!
+	run_src_with_args(src, entry, trace, []string{}, 0)!
 }
 
-fn run_src_with_args(src string, entry string, trace bool, args []string) ! {
+fn run_src_with_args(src string, entry string, trace bool, args []string, max_ops i64) ! {
 	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
 	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
 	defer {
@@ -587,7 +723,7 @@ fn run_src_with_args(src string, entry string, trace bool, args []string) ! {
 	obj.write(tmp_obj, o)!
 	linker.link([tmp_obj], tmp_bin)!
 	bin := obj.read_bin(tmp_bin)!
-	vm.run_with_args(bin, entry, trace, args)!
+	vm.run_opts(bin, entry, vm.RunOpts{ trace: trace, args: args, max_ops: max_ops })!
 }
 
 // ---------------------------------------------------------------------------

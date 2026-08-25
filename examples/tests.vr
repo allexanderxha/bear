@@ -528,6 +528,30 @@ fn test_dynamic_map_keys() {
 	assert cfg[which]["host"] == "localhost"
 }
 
+fn test_sort_large() {
+	// merge sort must handle large arrays (O(n log n)) and stay sorted
+	let a = []
+	let n = 2000
+	let i = 0
+	while i < n {
+		a = push(a, (n - i) % 97)
+		i = i + 1
+	}
+	sort(a)
+	assert len(a) == n
+	let ok = 1
+	let j = 1
+	while j < n {
+		if a[j - 1] > a[j] {
+			ok = 0
+		}
+		j = j + 1
+	}
+	assert ok == 1
+	assert a[0] == 0
+	assert a[n - 1] == 96
+}
+
 fn test_failing() {
 	// this one is meant to fail — shows up in `vr test` output
 	assert 1 == 2

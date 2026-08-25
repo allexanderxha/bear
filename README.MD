@@ -30,8 +30,10 @@ vr compile <file.vr> [-o out.vobj]          source  -> object
 vr assemble <file.vasm> [-o out.vobj]       assembly -> object
 vr link <a.vobj> [more.vobj ...] [-o out]   objects -> executable (.vbin)
 vr run <file.vr|file.vbin>                  compile+link+run, or run a binary
-vr debug <file.vr|file.vbin>                run with an instruction trace
-vr test <file.vr>                           run every test_* function
+vr debug <file.vr|file.vbin>                interactive debugger (breakpoints, step, locals)
+vr profile <file.vr|file.vbin>              run and report per-function instruction counts
+vr fuzz [--seed N] [--iters N]              fuzz the compiler and VM for crashes/hangs
+vr test <file.vr|dir>                       run every test_* function
 vr bench <file.vr> [iterations]             benchmark main()
 vr make [target] [args...]                  run build.vrmm (target = main)
 vr make -f <file.vrmm> [target] [args...]   run another build module
@@ -57,6 +59,55 @@ vr info | loader | alloc | version | help
 ./bin/vr run -w f.vr   # watch f.vr and rerun on every save
 ./bin/vr test examples # run every test_* fn in every .vr file under examples/
 ./bin/vr lsp           # language server for editors (diagnostics, go-to-def)
+./bin/vr run --profile f.vr  # hot-function report (instructions + calls)
+```
+
+### Debugging
+
+`vr debug` is an interactive debugger. Run to the first breakpoint (or stop at
+entry), then inspect state:
+
+```
+vr debug f.vr --break 12
+== stopped at main (line 12, ip 105) — help: h
+(vr-dbg) l            # list locals with values
+(vr-dbg) p x          # print one local
+(vr-dbg) bt           # backtrace (call chain)
+(vr-dbg) n            # next: run to the next line (skips calls)
+(vr-dbg) s            # step: one instruction
+(vr-dbg) f            # finish: run until the current function returns
+(vr-dbg) b 20         # set another breakpoint
+(vr-dbg) c            # continue
+```
+
+Breakpoints stop at the *start* of a source line, so locals hold the values
+from before that line executes. `vr debug --trace f.vr` keeps the old
+instruction-by-instruction trace.
+
+### Fuzzing
+
+`vr fuzz` generates random programs, compiles them, and runs each one twice
+with an instruction budget — every case in its own subprocess so a crash in
+the compiler or VM is isolated and reported instead of killing the run:
+
+```
+vr fuzz --seed 42 --iters 500 --save-dir fuzz-repros
+fuzz: no bugs found
+```
+
+Findings (crashes, hangs via `--max-ops`, nondeterminism) are saved as .vr
+repros; a nonzero exit reports bugs for CI.
+
+### Profiling
+
+`vr profile f.vr` (or `vr run --profile f.vr`) counts instructions and calls
+per function and prints the hot-function table:
+
+```
+function                   calls       instr      %
+fib                           25         271  96.8%
+main                           0           9   3.2%
+total                            280
 ```
 
 Quick start:
@@ -64,7 +115,7 @@ Quick start:
 ```bash
 ./bin/vr run examples/hello.vr        # run a program
 ./bin/vr test examples/tests.vr       # run the tests (one fails on purpose)
-./bin/vr debug examples/hello.vr      # watch every bytecode instruction
+./bin/vr debug examples/hello.vr      # interactive debugger (breakpoints, step, locals)
 
 # the assembler path
 ./bin/vr assemble examples/math.vasm -o math.vobj
@@ -288,7 +339,7 @@ fn main() {
   literals; `has(m, k)`, `delete(m, k)`, `keys(m)`, `len(m)` all work
 - arrays: `[e1, e2, ...]`, indexing `a[i]` (read and write), `len(a)`,
   `push/insert/remove/pop/sort/reverse/clone/index_of/join`; array literals
-  may nest
+  may nest; `sort` is a stable merge sort — guaranteed O(n log n)
 - error handling: `try { ... } catch e { ... }` and `throw "message"` — the
   runtime unwinds to the nearest catch
 - bitwise operators: `& | ^ ~ << >>`

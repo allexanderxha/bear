@@ -77,3 +77,17 @@ jobs:
       - name: Watch-mode and directory-test smoke
         run: |
           ./bin/vr test examples | grep -q 'passed'
+
+      - name: Debugger smoke — breakpoint, locals, backtrace, continue
+        run: |
+          printf 'fn main() {\n\tlet x = 10\n\tlet y = x + 5\n\tprintln(y)\n}\n' > /tmp/dbg_smoke.vr
+          printf 'b 2\nc\nl\np x\nbt\nc\n' | ./bin/vr debug /tmp/dbg_smoke.vr | grep -q 'x = 0'
+
+      - name: Profiler smoke — per-function instruction counts
+        run: |
+          printf 'fn fib(n) {\n\tif n < 2 {\n\t\treturn n\n\t}\n\treturn fib(n - 1) + fib(n - 2)\n}\nfn main() {\n\tprintln(fib(10))\n}\n' > /tmp/prof_smoke.vr
+          ./bin/vr profile /tmp/prof_smoke.vr | grep -q 'fib'
+
+      - name: Fuzzer smoke — short run must finish clean
+        run: |
+          ./bin/vr fuzz --seed 1 --iters 25 --max-ops 50000 --save-dir /tmp/fuzz_repros | grep -q 'no bugs found'
