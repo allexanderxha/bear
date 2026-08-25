@@ -31,8 +31,10 @@ mut:
 	types     map[string]string      // local name -> declared struct type ('' = unknown)
 	structs   map[string][]string    // declared struct name -> field list
 	enums     map[string][]string    // enum name -> variant list
+	lam_counter int // anonymous function counter
 	enum_vals map[string]int         // 'Enum.variant' -> integer value
 	consts    map[string]i64         // constant name -> integer value
+	lines     []obj.LineInfo         // code offset -> source line (debug info)
 	local_cnt int
 	argc      int
 	cur_fn    string
@@ -78,7 +80,7 @@ fn gen(prog Program) !obj.Obj {
 	}
 	// compile imported files and merge their objects
 	for imp in prog.imports {
-		imported := compile_file(imp.path)!
+		imported := compile_file(resolve_import(imp.path)!)!
 		// merge symbols from the imported object
 		for s in imported.symbols {
 			g.symbols << s
@@ -93,6 +95,10 @@ fn gen(prog Program) !obj.Obj {
 		for r in imported.relocs {
 			g.relocs << obj.Reloc{ offset: u32(code_off) + r.offset, name: r.name, kind: r.kind }
 		}
+		// merge debug info, rebasing offsets into this object's code space
+		for l in imported.lines {
+			g.lines << obj.LineInfo{ off: u32(code_off) + l.off, line: l.line }
+		}
 	}
 	for fd in prog.fns {
 		g.gen_fn(fd)!
@@ -102,6 +108,7 @@ fn gen(prog Program) !obj.Obj {
 		strings: g.strings
 		code:    g.code
 		relocs:  g.relocs
+		lines:   g.lines
 	}
 }
 
@@ -111,6 +118,7 @@ fn (mut g Gen) gen_fn(fd FnDecl) ! {
 	sym := if fd.recv_type.len > 0 { '${fd.recv_type}.${fd.name}' } else { fd.name }
 	g.cur_fn = sym
 	g.symbols << obj.Symbol{ name: sym, entry: g.code.len }
+	g.lines << obj.LineInfo{ off: u32(g.code.len), line: fd.line }
 	g.locals.clear()
 	g.types.clear()
 	g.local_cnt = 0
@@ -121,20 +129,67 @@ fn (mut g Gen) gen_fn(fd FnDecl) ! {
 		g.types[fd.recv_name] = fd.recv_type
 		next = 1
 	}
+	// a variadic parameter does not occupy an argument slot; it gets a fresh
+	// local that the prologue fills with the collected vararg array
+	if fd.variadic {
+		g.argc--
+	}
 	for i, p in fd.params {
+		if fd.variadic && i == fd.params.len - 1 {
+			continue
+		}
 		g.locals[p] = i + next
 	}
 	g.local_cnt = g.argc
+	if fd.variadic {
+		vidx := g.local_cnt
+		g.local_cnt++
+		g.locals[fd.params[fd.params.len - 1]] = vidx
+	}
 	// `enter n` reserves the non-parameter locals; n is patched once the body
 	// has been scanned.
 	g.code << op_enter
 	g.enter_off = u32(g.code.len)
 	g.code << obj.encode_i64(0)
+	// default parameter values: if the caller passed fewer args than this
+	// param's slot, evaluate the default and store it
+	for i, p in fd.params {
+		if fd.variadic && i == fd.params.len - 1 {
+			continue
+		}
+		if i >= fd.has_defs.len || !fd.has_defs[i] {
+			continue
+		}
+		slot := i + next
+		skip_l := g.new_label()
+		g.code << op_argc
+		g.code << op_push_i
+		g.code << obj.encode_i64(i64(slot))
+		g.code << op_le
+		g.code << op_jz
+		g.code << obj.encode_i64(0)
+		g.fixups << Fixup{ name: skip_l, off: u32(g.code.len) - 8 }
+		g.gen_expr(fd.defaults[i])!
+		g.emit_store(slot)
+		g.emit_label(skip_l)
+	}
+	// variadic collection: build an array from args[argc..actual-1]
+	if fd.variadic {
+		vidx := g.locals[fd.params[fd.params.len - 1]] or {
+			return error('internal: variadic param missing')
+		}
+		g.code << op_varargs
+		g.code << obj.encode_i64(i64(g.argc))
+		g.code << obj.encode_i64(i64(vidx))
+	}
 	for st in fd.body {
 		g.gen_stmt(st)!
 	}
 	g.code << op_ret // trailing return for fall-through
-	obj.patch_i64(mut g.code, g.enter_off, i64(g.local_cnt - g.argc))
+	// reserve all local slots: the callee may be called with fewer arguments
+	// than declared (default parameters) or more (variadic), so the frame must
+	// always cover slots 0..local_cnt-1
+	obj.patch_i64(mut g.code, g.enter_off, i64(g.local_cnt))
 	// resolve intra-function jump targets
 	for f in g.fixups {
 		target := g.labels[f.name] or {
@@ -148,6 +203,7 @@ fn (mut g Gen) gen_fn(fd FnDecl) ! {
 }
 
 fn (mut g Gen) gen_stmt(st Stmt) ! {
+	g.lines << obj.LineInfo{ off: u32(g.code.len), line: st.line }
 	match st.kind {
 		.expr_stmt {
 			g.gen_expr(st.expr)!
@@ -167,6 +223,28 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.types[st.target] = g.expr_type(st.expr)
 			g.code << op_store
 			g.code << obj.encode_i64(i64(idx))
+		}
+		.destruct_stmt {
+			// let { a, b } = e  →  tmp := e; a := tmp.a; b := tmp.b
+			// let [a, b] = e   →  tmp := e; a := tmp[0]; b := tmp[1]
+			tmp_idx := g.new_local()
+			g.gen_expr(st.expr)!
+			g.emit_store(tmp_idx)
+			for i, name in st.destruct_targets {
+				g.emit_load(tmp_idx)
+				if st.destruct_field {
+					g.emit_field_name(name)
+					g.code << op_sget
+				} else {
+					g.code << op_push_i
+					g.code << obj.encode_i64(i64(i))
+					g.code << op_aget
+				}
+				idx := g.new_local()
+				g.locals[name] = idx
+				g.types.delete(name)
+				g.emit_store(idx)
+			}
 		}
 		.assign_stmt {
 			idx := g.locals[st.target] or {
@@ -350,8 +428,25 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			prev_t := g.types[st.target] or { '' }
 			g.locals[st.target] = elem_idx
 			g.types.delete(st.target)
+			// bind the index variable if present (for i, v in arr)
+			prev_idx := if st.idx_target.len > 0 { g.locals[st.idx_target] or { -1 } } else { -1 }
+			prev_idx_t := if st.idx_target.len > 0 { g.types[st.idx_target] or { '' } } else { '' }
+			if st.idx_target.len > 0 {
+				g.locals[st.idx_target] = idx_idx
+				g.types.delete(st.idx_target)
+			}
 			for s in st.body {
 				g.gen_stmt(s)!
+			}
+			if st.idx_target.len > 0 {
+				if prev_idx >= 0 {
+					g.locals[st.idx_target] = prev_idx
+				} else {
+					g.locals.delete(st.idx_target)
+				}
+				if prev_idx_t.len > 0 {
+					g.types[st.idx_target] = prev_idx_t
+				}
 			}
 			if prev >= 0 {
 				g.locals[st.target] = prev
@@ -403,6 +498,44 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.code << obj.encode_i64(0)
 			g.fixups << Fixup{ name: ctx.continue_l, off: u32(g.code.len) - 8 }
 		}
+		.throw_stmt {
+			g.gen_expr(st.expr)!
+			g.code << op_throw
+		}
+		.try_stmt {
+			catch_l := g.new_label()
+			end_l := g.new_label()
+			err_idx := g.new_local()
+			g.code << op_try
+			g.code << obj.encode_i64(0)
+			g.fixups << Fixup{ name: catch_l, off: u32(g.code.len) - 8 }
+			for s in st.body {
+				g.gen_stmt(s)!
+			}
+			g.code << op_catch_done
+			g.code << op_jmp
+			g.code << obj.encode_i64(0)
+			g.fixups << Fixup{ name: end_l, off: u32(g.code.len) - 8 }
+			g.emit_label(catch_l)
+			g.code << op_store
+			g.code << obj.encode_i64(i64(err_idx))
+			prev := g.locals[st.target] or { -1 }
+			prev_t := g.types[st.target] or { '' }
+			g.locals[st.target] = err_idx
+			g.types.delete(st.target)
+			for s in st.els {
+				g.gen_stmt(s)!
+			}
+			if prev >= 0 {
+				g.locals[st.target] = prev
+			} else {
+				g.locals.delete(st.target)
+			}
+			if prev_t.len > 0 {
+				g.types[st.target] = prev_t
+			}
+			g.emit_label(end_l)
+		}
 	}
 }
 
@@ -411,6 +544,10 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 		.int_lit {
 			g.code << op_push_i
 			g.code << obj.encode_i64(e.int_v)
+		}
+		.float_lit {
+			g.code << op_push_f
+			g.code << obj.encode_f64(e.float_v)
 		}
 		.str_lit {
 			// the index is a placeholder; the linker rebases it via a string
@@ -468,7 +605,21 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 		}
 		.method_call {
 			// p.dist(x)  →  call <Type>.dist  p, x
-			recv_t := g.method_receiver_type(e)!
+			recv_t := g.method_receiver_type(e)
+			// string methods: s.len(), s.to_upper(), s.contains(x), ... —
+			// the receiver type is known when it is a literal or a local that
+			// was assigned a string literal
+			if recv_t == 'string' || e.left.kind == .str_lit {
+				g.gen_expr(*e.left)!
+				for a in e.args {
+					g.gen_expr(a)!
+				}
+				g.code << op_str_method
+				g.code << obj.encode_i64(0) // name placeholder — rebased by the linker
+				g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: e.name, kind: 1 }
+				g.code << obj.encode_i64(i64(e.args.len))
+				return
+			}
 			// built-in: enum.to_string() generates a match on the integer value
 			if e.name == 'to_string' && recv_t in g.enums && e.args.len == 0 {
 				g.gen_enum_to_string(recv_t, *e.left, e.line)!
@@ -487,11 +638,24 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			for a in e.args {
 				g.gen_expr(a)!
 			}
-			g.code << op_call
-			g.code << obj.encode_i64(0) // placeholder — patched by the linker
-			g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: '${recv_t}.${e.name}', kind: 0 }
-			g.code << obj.encode_i64(i64(e.args.len + 1)) // receiver + args
+			// if receiver type is known, emit a static method call
+			if recv_t.len > 0 {
+				g.code << op_call
+				g.code << obj.encode_i64(0) // placeholder — patched by the linker
+				g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: '${recv_t}.${e.name}', kind: 0 }
+				g.code << obj.encode_i64(i64(e.args.len + 1)) // receiver + args
+		} else {
+			// unknown type: treat as closure call on a struct field
+			g.emit_field_name(e.name)
+			g.code << op_sget
+			for a in e.args {
+				g.gen_expr(a)!
+			}
+			g.code << op_call_closure
+			g.code << obj.encode_i64(i64(e.args.len))
 		}
+		return
+	}
 		.index {
 			// if the index is a string literal, use struct field access (map style)
 			if e.right.kind == .str_lit {
@@ -503,6 +667,57 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 				g.gen_expr(*e.right)!
 				g.code << op_aget
 			}
+		}
+		.slice {
+			// arr[start..end]  →  push value, start, end; slice
+			g.gen_expr(*e.left)!
+			g.gen_expr(*e.right)!
+			g.gen_expr(*e.extra)!
+			g.code << op_slice
+		}
+		.anon_fn {
+			g.lam_counter++
+			name := '__lam_${g.lam_counter}'
+			// jump over the lambda body so callers don't fall through
+			g.code << op_jmp
+			g.code << obj.encode_i64(0)
+			skip_fix_off := u32(g.code.len) - 8
+			fd := FnDecl{
+				name: name
+				params: e.fparams
+				defaults: e.fdefaults
+				has_defs: e.fhas_defs
+				variadic: e.fvariadic
+				body: e.fn_body
+				line: e.line
+			}
+			// Save enclosing fixup/label/locals/type state; gen_fn clears them.
+			// enter_off and argc are also per-function, so they must be restored
+			// or the enclosing function's `enter n` patch is lost (locals would
+			// then collide with the stack top).
+			saved_fixups := g.fixups.clone()
+			saved_labels := g.labels.clone()
+			saved_locals := g.locals.clone()
+			saved_types := g.types.clone()
+			saved_local_cnt := g.local_cnt
+			saved_enter_off := g.enter_off
+			saved_argc := g.argc
+			g.labels.clear()
+			g.fixups = []Fixup{}
+			g.gen_fn(fd)!
+			// Restore the enclosing state.
+			g.fixups = saved_fixups
+			g.labels = saved_labels.clone()
+			g.locals = saved_locals.clone()
+			g.types = saved_types.clone()
+			g.local_cnt = saved_local_cnt
+			g.enter_off = saved_enter_off
+			g.argc = saved_argc
+			// Patch the skip jump to land at the closure opcode we emit next.
+			obj.patch_i64(mut g.code, skip_fix_off, i64(g.code.len))
+			g.code << op_closure
+			g.code << obj.encode_i64(0)
+			g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: name, kind: 0 }
 		}
 		.bool_lit {
 			g.code << op_push_i
@@ -526,11 +741,29 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			}
 		}
 		.unary {
+			// constant-fold unary ops on literals: -5, -2.5, not true, ~7
+			if e.right.kind == .int_lit && (e.op == .minus || e.op == .tilde) {
+				v := e.right.int_v
+				res := if e.op == .minus { -v } else { ~v }
+				g.code << op_push_i
+				g.code << obj.encode_i64(res)
+				return
+			}
+			if e.right.kind == .float_lit && e.op == .minus {
+				g.code << op_push_f
+				g.code << obj.encode_f64(-e.right.float_v)
+				return
+			}
+			if e.right.kind == .bool_lit && e.op == .kw_not {
+				g.code << op_push_i
+				g.code << obj.encode_i64(if e.right.int_v == 0 { 1 } else { 0 })
+				return
+			}
 			g.gen_expr(*e.right)!
-			if e.op == .kw_not {
-				g.code << op_not
-			} else {
-				g.code << op_neg
+			match e.op {
+				.kw_not { g.code << op_not }
+				.tilde { g.code << op_not_b }
+				else { g.code << op_neg }
 			}
 		}
 		.binary {
@@ -594,6 +827,31 @@ fn (mut g Gen) gen_call(e Expr) ! {
 		g.code << op_skeys
 		return
 	}
+	// closure call: ident(args) where ident is a local holding a closure
+	if e.name in g.locals {
+		g.gen_expr(Expr{ kind: .ident, name: e.name, line: e.line })!
+		g.code << op_dup  // separate the closure copy from the local slot
+		for a in e.args {
+			g.gen_expr(a)!
+		}
+		g.code << op_call_closure
+		g.code << obj.encode_i64(i64(e.args.len))
+		return
+	}
+	// host builtins (file I/O, OS, math, collections) go through op_native
+	bid, bargc := builtin_spec(e.name)
+	if bid >= 0 {
+		if e.args.len != bargc {
+			return error('${e.name}() takes exactly ${bargc} argument(s) (line ${e.line})')
+		}
+		for a in e.args {
+			g.gen_expr(a)!
+		}
+		g.code << op_native
+		g.code << obj.encode_i64(i64(bid))
+		g.code << obj.encode_i64(i64(bargc))
+		return
+	}
 	for a in e.args {
 		g.gen_expr(a)!
 	}
@@ -603,7 +861,169 @@ fn (mut g Gen) gen_call(e Expr) ! {
 	g.code << obj.encode_i64(i64(e.args.len)) // argc
 }
 
+// builtin_spec maps a builtin function name to its (native id, arg count).
+// A negative id means the name is not a builtin (it is a user function).
+fn builtin_spec(name string) (int, int) {
+	return match name {
+		'abs' { native_abs, 1 }
+		'min' { native_min, 2 }
+		'max' { native_max, 2 }
+		'pow' { native_pow, 2 }
+		'sqrt' { native_sqrt, 1 }
+		'floor' { native_floor, 1 }
+		'ceil' { native_ceil, 1 }
+		'round' { native_round, 1 }
+		'rand' { native_rand, 0 }
+		'rand_int' { native_rand_int, 1 }
+		'int' { native_int, 1 }
+		'str' { native_str, 1 }
+		'float' { native_float, 1 }
+		'type' { native_type, 1 }
+		'split' { native_split, 2 }
+		'join' { native_join, 2 }
+		'contains' { native_contains, 2 }
+		'starts_with' { native_starts_with, 2 }
+		'ends_with' { native_ends_with, 2 }
+		'trim' { native_trim, 1 }
+		'lower' { native_lower, 1 }
+		'upper' { native_upper, 1 }
+		'pop' { native_pop, 1 }
+		'insert' { native_insert, 3 }
+		'remove' { native_remove, 2 }
+		'sort' { native_sort, 1 }
+		'clone' { native_clone, 1 }
+		'reverse' { native_reverse, 1 }
+		'index_of' { native_index_of, 2 }
+		'args' { native_args, 0 }
+		'getenv' { native_getenv, 1 }
+		'setenv' { native_setenv, 2 }
+		'exit' { native_exit, 1 }
+		'time' { native_time, 0 }
+		'sleep' { native_sleep, 1 }
+		'read_file' { native_read_file, 1 }
+		'write_file' { native_write_file, 2 }
+		'eprint' { native_eprint, 1 }
+		else { -1, 0 }
+	}
+}
+
+// fold_binary constant-folds binary expressions whose operands are both
+// literals, emitting the precomputed constant. Returns false when the
+// expression cannot be folded (leaving it to the runtime). Division/modulo by
+// zero and out-of-range shifts are deliberately not folded so the runtime
+// still reports them.
+fn (mut g Gen) fold_binary(e Expr) bool {
+	// integer folding
+	if e.left.kind == .int_lit && e.right.kind == .int_lit {
+		l := e.left.int_v
+		r := e.right.int_v
+		mut res := i64(0)
+		match e.op {
+			.plus { res = l + r }
+			.minus { res = l - r }
+			.star { res = l * r }
+			.slash {
+				if r == 0 {
+					return false
+				}
+				res = l / r
+			}
+			.percent {
+				if r == 0 {
+					return false
+				}
+				res = l % r
+			}
+			.amp { res = l & r }
+			.pipe { res = l | r }
+			.caret { res = l ^ r }
+			.lt_lt {
+				if r < 0 || r > 63 {
+					return false
+				}
+				res = l << u32(r)
+			}
+			.gt_gt {
+				if r < 0 || r > 63 {
+					return false
+				}
+				res = l >> u32(r)
+			}
+			.eq_eq { res = if l == r { 1 } else { 0 } }
+			.not_eq { res = if l != r { 1 } else { 0 } }
+			.lt { res = if l < r { 1 } else { 0 } }
+			.le { res = if l <= r { 1 } else { 0 } }
+			.gt { res = if l > r { 1 } else { 0 } }
+			.ge { res = if l >= r { 1 } else { 0 } }
+			else { return false }
+		}
+		g.code << op_push_i
+		g.code << obj.encode_i64(res)
+		return true
+	}
+	// float folding
+	if e.left.kind == .float_lit && e.right.kind == .float_lit {
+		l := e.left.float_v
+		r := e.right.float_v
+		mut res := 0.0
+		mut is_bool := false
+		mut bres := false
+		match e.op {
+			.plus { res = l + r }
+			.minus { res = l - r }
+			.star { res = l * r }
+			.slash {
+				if r == 0.0 {
+					return false
+				}
+				res = l / r
+			}
+			.eq_eq { is_bool = true; bres = l == r }
+			.not_eq { is_bool = true; bres = l != r }
+			.lt { is_bool = true; bres = l < r }
+			.le { is_bool = true; bres = l <= r }
+			.gt { is_bool = true; bres = l > r }
+			.ge { is_bool = true; bres = l >= r }
+			else { return false }
+		}
+		if is_bool {
+			g.code << op_push_i
+			g.code << obj.encode_i64(if bres { 1 } else { 0 })
+		} else {
+			g.code << op_push_f
+			g.code << obj.encode_f64(res)
+		}
+		return true
+	}
+	// string concatenation folding: "a" + "b" → one interned constant.
+	// The string is emitted as a relocation so the linker interns it in the
+	// final table, exactly like a plain string literal.
+	if e.left.kind == .str_lit && e.right.kind == .str_lit && e.op == .plus {
+		g.code << op_push_s
+		g.code << obj.encode_i64(0) // placeholder — rebased by the linker
+		g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: e.left.str_v + e.right.str_v, kind: 1 }
+		return true
+	}
+	// boolean short-circuit folding: only when both sides are bool literals
+	if e.left.kind == .bool_lit && e.right.kind == .bool_lit {
+		if e.op == .kw_and {
+			g.code << op_push_i
+			g.code << obj.encode_i64(if e.left.int_v != 0 && e.right.int_v != 0 { 1 } else { 0 })
+			return true
+		}
+		if e.op == .kw_or {
+			g.code << op_push_i
+			g.code << obj.encode_i64(if e.left.int_v != 0 || e.right.int_v != 0 { 1 } else { 0 })
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) gen_binary(e Expr) ! {
+	if g.fold_binary(e) {
+		return
+	}
 	match e.op {
 		.kw_and {
 			// a and b  →  short-circuit: if !a or !b then 0 else 1
@@ -664,6 +1084,11 @@ fn (mut g Gen) gen_binary(e Expr) ! {
 				.le { op_le }
 				.gt { op_gt }
 				.ge { op_ge }
+				.amp { op_and_b }
+				.pipe { op_or_b }
+				.caret { op_xor }
+				.lt_lt { op_shl }
+				.gt_gt { op_shr }
 				else {
 					return error('unsupported binary operator at line ${e.line}')
 				}
@@ -678,6 +1103,9 @@ fn (mut g Gen) gen_binary(e Expr) ! {
 // variable, or an enum variant `Enum.variant`. Everything else has no
 // known type ('').
 fn (mut g Gen) expr_type(e Expr) string {
+	if e.kind == .str_lit {
+		return 'string'
+	}
 	if e.kind == .struct_lit {
 		return e.name
 	}
@@ -691,14 +1119,28 @@ fn (mut g Gen) expr_type(e Expr) string {
 			return e.left.name
 		}
 	}
+	// slicing or indexing a known string yields a string
+	if (e.kind == .slice || e.kind == .index) && g.expr_type(*e.left) == 'string' {
+		return 'string'
+	}
+	// string concatenation: "a" + "b" (or anything + a string literal)
+	if e.kind == .binary && e.op == .plus && (e.left.kind == .str_lit || e.right.kind == .str_lit) {
+		return 'string'
+	}
+	// string-producing builtins typed as strings so method chains keep working
+	if e.kind == .call {
+		return match e.name {
+			'upper', 'lower', 'trim', 'str', 'getenv', 'read_file', 'join' { 'string' }
+			else { '' }
+		}
+	}
 	return ''
 }
 
 // method_receiver_type resolves the struct type a method call is made on.
-// The receiver must be a plain variable whose type the compiler knows
-// (from a typed literal, an assignment, or a method receiver binding)
-// or an enum variant expression (e.g. Color.red).
-fn (mut g Gen) method_receiver_type(e Expr) !string {
+// Returns '' when the type is statically unknown (at which point the
+// call becomes a dynamic closure invocation via field access).
+fn (mut g Gen) method_receiver_type(e Expr) string {
 	recv := e.left
 	if recv.kind == .ident {
 		t := g.types[recv.name] or { '' }
@@ -706,14 +1148,14 @@ fn (mut g Gen) method_receiver_type(e Expr) !string {
 			return t
 		}
 	}
-	// enum variant: Color.red  →  type is "Color"
+	// enum variant: Color.red  ->  type is "Color"
 	if recv.kind == .field && recv.left.kind == .ident {
 		key := '${recv.left.name}.${recv.name}'
 		if key in g.enum_vals {
 			return recv.left.name
 		}
 	}
-	return error('cannot resolve method "${e.name}": receiver type unknown (line ${e.line})')
+	return ''
 }
 
 // gen_enum_to_string generates bytecode for `e.to_string()` on an enum value.

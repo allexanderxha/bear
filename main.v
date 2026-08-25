@@ -70,6 +70,24 @@ fn main() {
 		'bench', 'b' {
 			toolchain_bench(rest) or { die('bench', err) }
 		}
+		'repl', 'i' {
+			toolchain_repl() or { die('repl', err) }
+		}
+		'fmt' {
+			toolchain_fmt(rest) or { die('fmt', err) }
+		}
+		'init' {
+			toolchain_init(rest) or { die('init', err) }
+		}
+		'get' {
+			toolchain_get(rest) or { die('get', err) }
+		}
+		'install' {
+			toolchain_install() or { die('install', err) }
+		}
+		'list' {
+			toolchain_list() or { die('list', err) }
+		}
 		'clean' {
 			toolchain_clean()
 		}
@@ -153,6 +171,12 @@ fn toolchain_help() {
 	println('  debug <file.vr|file.vbin>                run with an instruction trace')
 	println('  test <file.vr>                           run every test_* function')
 	println('  bench <file.vr> [iterations]             benchmark main()')
+	println('  repl                                     interactive session')
+	println('  fmt [-w] <file.vr>                       format source')
+	println('  init [name]                              scaffold a project')
+	println('  get <owner/repo | url | ./path>          fetch a package into vendor/')
+	println('  install                                  install deps from vr.mod')
+	println('  list                                     show the project manifest')
 	println('  clean                                    remove build artifacts')
 	println('  up                                       rebuild the vr binary into bin/')
 	println('  symlink                                  link bin/vr into your PATH')
@@ -311,16 +335,17 @@ fn toolchain_link(args []string) ! {
 
 fn toolchain_run(args []string) ! {
 	if args.len == 0 {
-		return error('usage: vr run <file.vr|file.vbin>')
+		return error('usage: vr run <file.vr|file.vbin> [program-args...]')
 	}
 	f := args[0]
+	prog_args := args[1..]
 	if f.ends_with('.vbin') {
 		bin := obj.read_bin(f)!
-		vm.run(bin, 'main', false)!
+		vm.run_with_args(bin, 'main', false, prog_args)!
 		return
 	}
 	if f.ends_with('.vr') {
-		run_src(f, 'main', false)!
+		run_src_with_args(f, 'main', false, prog_args)!
 		return
 	}
 	return error('unsupported file type: ${f} (expected .vr or .vbin)')
@@ -423,6 +448,10 @@ fn toolchain_bench(args []string) ! {
 }
 
 fn run_src(src string, entry string, trace bool) ! {
+	run_src_with_args(src, entry, trace, []string{})!
+}
+
+fn run_src_with_args(src string, entry string, trace bool, args []string) ! {
 	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
 	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
 	defer {
@@ -433,7 +462,7 @@ fn run_src(src string, entry string, trace bool) ! {
 	obj.write(tmp_obj, o)!
 	linker.link([tmp_obj], tmp_bin)!
 	bin := obj.read_bin(tmp_bin)!
-	vm.run(bin, entry, trace)!
+	vm.run_with_args(bin, entry, trace, args)!
 }
 
 // ---------------------------------------------------------------------------

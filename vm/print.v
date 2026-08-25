@@ -44,6 +44,12 @@ fn (mut v Vm) val_str(x i64, depth int) string {
 		}
 		return out + '}'
 	}
+	if v.is_float(x) && v.valid_float_handle(x) {
+		return fmt_float(v.fval(x))
+	}
+	if v.is_closure(x) && v.valid_closure_handle(x) {
+		return '<fn@${v.closures[v.hand(x)].entry}>'
+	}
 	return v.dec_int(x).str()
 }
 
@@ -52,6 +58,7 @@ fn (mut v Vm) trace_op(op u8) {
 		op_halt { 'halt' }
 		op_push_i { 'push_int' }
 		op_push_s { 'push_str' }
+		op_push_f { 'push_float' }
 		op_load { 'load' }
 		op_store { 'store' }
 		op_pop { 'pop' }
@@ -93,6 +100,23 @@ fn (mut v Vm) trace_op(op u8) {
 		op_sdel { 'sdel' }
 		op_slen { 'slen' }
 		op_skeys { 'skeys' }
+		op_slice { 'slice' }
+		op_native { 'native' }
+		op_and_b { 'and_b' }
+		op_or_b { 'or_b' }
+		op_xor { 'xor' }
+		op_shl { 'shl' }
+		op_shr { 'shr' }
+		op_not_b { 'not_b' }
+		op_try { 'try' }
+		op_throw { 'throw' }
+		op_catch_done { 'catch_done' }
+		op_closure { 'closure' }
+		op_call_closure { 'call_closure' }
+		op_argc { 'argc' }
+		op_load_dyn { 'load_dyn' }
+		op_varargs { 'varargs' }
+		op_str_method { 'str_method' }
 		else { '??' }
 	}
 	mut s := ''
@@ -100,10 +124,13 @@ fn (mut v Vm) trace_op(op u8) {
 		if i > 0 {
 			s += ' '
 		}
-		if v.is_str(v.stack[i]) && v.valid_handle(v.stack[i]) {
-			s += '"${v.strings[v.hand(v.stack[i])]}"'
+		x := v.stack[i]
+		if v.is_str(x) && v.valid_handle(x) {
+			s += '"${v.strings[v.hand(x)]}"'
+		} else if v.is_closure(x) {
+			s += '<fn>'
 		} else {
-			s += v.val_str(v.stack[i], 0)
+			s += v.val_str(x, 0)
 		}
 	}
 	println('  [ip=${v.ip:4}] ${name:-9}  stack: [${s}]')

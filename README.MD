@@ -37,7 +37,19 @@ vr clean                                    remove .vobj/.vbin artifacts
 vr up                                       rebuild bin/vr
 vr symlink                                  link bin/vr into your PATH
 vr config [set <key> <value>]               toolchain config (outdir, verbose)
+vr repl                                     interactive session
+vr fmt [-w] <file.vr>                       format source (keeps comments)
+vr init [name]                              scaffold a project (vr.mod + main.vr)
+vr get <owner/repo | git-url | ./path>      fetch a package into vendor/
+vr install                                  install dependencies from vr.mod
+vr list                                     show the project manifest
 vr info | loader | alloc | version | help
+```
+
+```bash
+./bin/vr repl          # try expressions and functions interactively
+./bin/vr fmt -w f.vr   # normalize a file's indentation/spacing in place
+./bin/vr init myproj   # start a project; vr get owner/repo fetches packages
 ```
 
 Quick start:
@@ -61,9 +73,10 @@ Quick start:
 
 ## The VuurRaaf language
 
-A small, V-flavored language. Values are 64-bit integers, strings, arrays, or
-structs (strings concatenate with `+` and compare with `==`/`!=`; arrays and
-structs are mutable references that compare by identity).
+A small, V-flavored language. Values are 64-bit integers, 64-bit floats,
+strings, arrays, structs, enums, and closures (strings concatenate with `+`
+and compare with `==`/`!=`; arrays and structs are mutable references that
+compare by identity).
 
 ```
 fn sum(items) {
@@ -138,10 +151,29 @@ fn main() {
 }
 ```
 
-- functions: `fn name(a, b) { ... }` with `return expr`
+- functions: `fn name(a, b) { ... }` with `return expr`; default parameter
+  values `fn f(a, b = 10)`, variadic params `fn f(nums...)`, destructuring
+  `let { a, b } = rec` and `let [x, y] = arr`, and anonymous closures
+  `let f = fn(x) { return x * 2 }` stored in variables and arrays
+- generics: `fn first[T](arr) { return arr[0] }` with checked call sites
+  `first[int](arr)` — the VM is dynamically typed, so type parameters erase
+  to a single function but arity and duplicates are validated
 - variables: `let name = expr`, reassignment `name = expr`
+- floats: `3.14`, `0.5`, `1e3` — float literals and `float(x)`; arithmetic
+  promotes to float; `floor` / `ceil` / `round` / `sqrt` / `pow` / `abs` /
+  `min` / `max` / `rand` / `rand_int`
+- strings are UTF-8: `len(s)` counts characters, `s[i]` and `s[a..b]` index
+  and slice by character (runes), and methods like `s.to_upper()`,
+  `s.contains(x)`, `s.split(d)`, `s.index_of(x)`, `s.to_int()`, `s.len()`
+  work on any string-valued expression
 - arrays: `[e1, e2, ...]`, indexing `a[i]` (read and write), `len(a)`,
-  `push(a, v)`; array literals may nest
+  `push/insert/remove/pop/sort/reverse/clone/index_of/join`; array literals
+  may nest
+- error handling: `try { ... } catch e { ... }` and `throw "message"` — the
+  runtime unwinds to the nearest catch
+- bitwise operators: `& | ^ ~ << >>`
+- host builtins: `read_file` / `write_file`, `args()`, `getenv` / `setenv`,
+  `exit`, `sleep`, `time()`, `type(x)`, `str(x)`, `int(x)`, `split` / `join`
 - for loops: `for x in arr { }` and ranges `for i in 0..10 { }` /
   `for i in 0...10 { }`; loop variables are scoped to the loop body
 - `break` / `continue` inside `while` and `for` loops (in `for` loops
@@ -153,9 +185,14 @@ fn main() {
   field access `a.b` and assignment `a.b = v` (chained: `a[i].b`, `a.b[i]`);
   structs are mutable references (identity `==`/`!=`), and setting a missing
   field adds it, so records can be built incrementally
-- operators: `+ - * / %`, `== != < <= > >=`, `and or not`, unary `-`
+- enums: `enum Color { red green blue }` with `Color.red`, `e.to_string()`,
+  `e.count()`, and iteration in `for`
+- constants: `const NAME = 42` (compile-time integer/bool values)
+- operators: `+ - * / %`, `== != < <= > >=`, `and or not`, `& | ^ ~ << >>`,
+  unary `-`; constant expressions fold at compile time
 - statements: `let`, assignment, `if/else`, `match`, `while`, `for`,
-  `break`, `continue`, `return`, `assert`, calls, `print(...)` / `println(...)`
+  `break`, `continue`, `return`, `assert`, `try/catch`/`throw`, calls,
+  `print(...)` / `println(...)`
 - comments: `//`
 
 ## Assembly
@@ -198,25 +235,32 @@ field name as a string first, exactly like the compiler does).
 
 | module       | role                                                        |
 |--------------|-------------------------------------------------------------|
-| `compiler/`  | lexer, recursive-descent parser, bytecode codegen (VROBJ)   |
+| `compiler/`  | lexer, parser, type checker, bytecode codegen (VROBJ)      |
 | `assembler/` | `.vasm` -> VROBJ                                            |
 | `linker/`    | resolves relocations, rebases strings, emits VRBIN          |
 | `vm/`        | stack VM: tagged values, call frames, string/array heaps    |
 | `obj/`       | VROBJ/VRBIN binary formats                                  |
 | `bin/`       | small standalone tools: `tl_alloc.v`, `tl_loader.v`         |
 
-The VM is a stack machine with 64-bit tagged values using two tag bits:
-numbers are stored shifted left by two, string handles end in `01`, array
-handles in `11` — so no integer ever collides with a heap handle. Arrays live
-in a growable heap (`mkarray`/`aget`/`aset`/`alen`/`apush`). Calls push a
-frame (return address, base pointer, argc), copy arguments into local slots,
-and reserve extra locals with `enter n`. `vr debug` prints every instruction
-with the stack contents (arrays rendered as `[1, 2, ...]`).
+The VM is a stack machine with 64-bit tagged values using three tag bits:
+ints, string/array/struct/float/closure handles — so no integer ever
+collides with a heap handle. A mark-and-sweep garbage collector runs between
+opcodes when the heap grows past a threshold, tracing the stack (which holds
+every frame's locals) and compacting the pools; string constants baked into
+bytecode are never collected. Bytecode carries a line table, so runtime
+errors report the source line. A conservative compile-time type checker
+(`compiler/check.v`) rejects provably wrong programs (unknown variables,
+field access on numbers, arithmetic on strings, wrong arity) while leaving
+dynamic programs alone. `vr debug` prints every instruction with the stack
+contents (arrays rendered as `[1, 2, ...]`).
 
 ## Repository layout
 
 ```
 main.v               CLI entry point (vr <command> ...)
+repl.v               interactive REPL
+fmt.v                source formatter
+pkg.v                package manager (init/get/install/list)
 v.mod                module definition
 compiler/ assembler/ linker/ vm/ obj/   the toolchain itself
 bin/                 built binary + standalone tools

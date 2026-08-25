@@ -13,6 +13,7 @@
 module obj
 
 import os
+import math
 
 pub const magic = 'VROBJ'
 pub const bin_magic = 'VRBIN'
@@ -36,6 +37,7 @@ pub mut:
 	strings []string
 	code    []u8
 	relocs  []Reloc
+	lines   []LineInfo
 }
 
 pub struct BinFn {
@@ -44,11 +46,20 @@ pub mut:
 	entry int
 }
 
+// LineInfo maps a code offset to the source line it was generated from,
+// enabling source-level locations in runtime errors.
+pub struct LineInfo {
+pub mut:
+	off  u32
+	line int
+}
+
 pub struct Bin {
 pub mut:
 	fns     []BinFn
 	strings []string
 	code    []u8
+	lines   []LineInfo
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +73,16 @@ pub fn encode_i64(v i64) []u8 {
 	mut b := []u8{}
 	for i in 0..8 {
 		b << u8((v >> (8 * i)) & 0xff)
+	}
+	return b
+}
+
+// encode_f64 writes a little-endian f64 (its IEEE-754 bit pattern).
+pub fn encode_f64(v f64) []u8 {
+	bits := math.f64_bits(v)
+	mut b := []u8{}
+	for i in 0..8 {
+		b << u8((bits >> (8 * i)) & 0xff)
 	}
 	return b
 }
@@ -146,6 +167,11 @@ pub fn write(path string, o Obj) ! {
 		b << r.name.bytes()
 		b << r.kind
 	}
+	b << encode_u32(u32(o.lines.len))
+	for l in o.lines {
+		b << encode_u32(l.off)
+		b << encode_i64(i64(l.line))
+	}
 	os.write_bytes(path, b)!
 }
 
@@ -180,6 +206,12 @@ pub fn read(path string) !Obj {
 		kind := r.u8_()!
 		o.relocs << Reloc{ offset: off, name: name, kind: kind }
 	}
+	nlines := int(r.u32_()!)
+	for _ in 0..nlines {
+		off := r.u32_()!
+		line := int(r.i64_()!)
+		o.lines << LineInfo{ off: off, line: line }
+	}
 	return o
 }
 
@@ -203,6 +235,11 @@ pub fn write_bin(path string, bin Bin) ! {
 	}
 	b << encode_u32(u32(bin.code.len))
 	b << bin.code
+	b << encode_u32(u32(bin.lines.len))
+	for l in bin.lines {
+		b << encode_u32(l.off)
+		b << encode_i64(i64(l.line))
+	}
 	os.write_bytes(path, b)!
 }
 
@@ -229,5 +266,12 @@ pub fn read_bin(path string) !Bin {
 		return error('executable file truncated')
 	}
 	bin.code = b[r.pos..r.pos + ncode]
+	r.pos += ncode
+	nlines := int(r.u32_()!)
+	for _ in 0..nlines {
+		off := r.u32_()!
+		line := int(r.i64_()!)
+		bin.lines << LineInfo{ off: off, line: line }
+	}
 	return bin
 }

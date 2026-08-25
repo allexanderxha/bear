@@ -6,15 +6,25 @@
 module vm
 
 import obj
+import math
 
 // run executes the function named `entry` from the executable `bin` and
 // returns its return value (0 if it never returns one).
 pub fn run(bin obj.Bin, entry string, trace bool) !i64 {
+	return run_with_args(bin, entry, trace, []string{})
+}
+
+// run_with_args is run() with command-line arguments exposed to the program
+// via the `args()` builtin.
+pub fn run_with_args(bin obj.Bin, entry string, trace bool, args []string) !i64 {
 	mut v := Vm{
-		code:    bin.code
-		strings: bin.strings.clone()
-		stack:   []i64{len: stack_cap}
-		trace:   trace
+		code:       bin.code
+		strings:    bin.strings.clone()
+		stack:      []i64{len: stack_cap}
+		trace:      trace
+		prog_args:  args
+		lines:      bin.lines
+		const_strs: bin.strings.len
 	}
 	mut entry_ip := -1
 	for f in bin.fns {
@@ -38,15 +48,43 @@ pub fn run(bin obj.Bin, entry string, trace bool) !i64 {
 	v.sp++
 	v.bp = v.sp
 	v.ip = entry_ip
-	v.exec()!
+	v.exec() or {
+		return error('${err.msg()} at ${v.where()}')
+	}
+	if v.did_exit {
+		return v.exit_code
+	}
 	if v.sp > 0 {
 		return v.dec_int(v.stack[0])
 	}
 	return 0
 }
 
+// where returns a source-level location for the current instruction pointer:
+// `line 12 (ip 345)` when debug info is available, otherwise just `(ip 345)`.
+fn (v Vm) where() string {
+	// line table entries are recorded in code order, so walk backwards from
+	// the most recent entry to find the last one at or before v.ip
+	for i := v.lines.len - 1; i >= 0; i-- {
+		if v.ip >= int(v.lines[i].off) {
+			return 'line ${v.lines[i].line} (ip ${v.ip})'
+		}
+	}
+	return '(ip ${v.ip})'
+}
+
 fn (mut v Vm) exec() ! {
 	for !v.halted {
+		// garbage collection: runs between opcodes when the heap has grown by
+		// gc_alloc_trigger entries since the last collection, so no live value
+		// is ever mid-flight in an instruction handler
+		heap := v.strings.len + v.arrays.len + v.structs.len + v.floats.len + v.closures.len
+		if heap > v.last_heap + gc_alloc_trigger {
+			v.collect()
+			v.last_heap = v.strings.len + v.arrays.len + v.structs.len + v.floats.len + v.closures.len
+		} else {
+			v.last_heap = heap
+		}
 		op := v.code[v.ip]
 		if v.trace {
 			v.trace_op(op)
@@ -63,6 +101,11 @@ fn (mut v Vm) exec() ! {
 				v.ip++
 				idx := int(v.read_i64())
 				v.push(v.mkstr(idx))!
+			}
+			op_push_f {
+				v.ip++
+				f := v.read_f64()
+				v.push(v.push_float(f))!
 			}
 			op_load {
 				v.ip++
@@ -117,16 +160,17 @@ fn (mut v Vm) exec() ! {
 			op_neg {
 				v.ip++
 				a := v.pop()!
-				if v.is_str(a) {
+				if v.is_float(a) {
+					v.push(v.push_float(-v.fval(a)))!
+				} else if v.is_str(a) {
 					return error('cannot negate a string')
-				}
-				if v.is_arr(a) {
+				} else if v.is_arr(a) {
 					return error('cannot negate an array')
-				}
-				if v.is_struct(a) {
+				} else if v.is_struct(a) {
 					return error('cannot negate a struct')
+				} else {
+					v.push(v.enc_int(-v.dec_int(a)))!
 				}
-				v.push(v.enc_int(-v.dec_int(a)))!
 			}
 			op_eq {
 				v.ip++
@@ -247,14 +291,22 @@ fn (mut v Vm) exec() ! {
 				v.ip++
 				idx := int(v.dec_int(v.pop()!))
 				h := v.pop()!
-				if !v.is_arr(h) || !v.valid_arr_handle(h) {
-					return error('indexing a non-array value')
+				if v.is_arr(h) && v.valid_arr_handle(h) {
+					a := v.arrays[v.hand(h)]
+					if idx < 0 || idx >= a.len {
+						return error('array index ${idx} out of bounds (len ${a.len})')
+					}
+					v.push(a[idx])!
+				} else if v.is_str(h) && v.valid_handle(h) {
+					// rune-based string indexing: s[i] is the i-th character
+					runes := v.strings[v.hand(h)].runes()
+					if idx < 0 || idx >= runes.len {
+						return error('string index ${idx} out of bounds (len ${runes.len})')
+					}
+					v.push(v.alloc_str(runes[idx].str()))!
+				} else {
+					return error('indexing a non-array, non-string value')
 				}
-				a := v.arrays[v.hand(h)]
-				if idx < 0 || idx >= a.len {
-					return error('array index ${idx} out of bounds (len ${a.len})')
-				}
-				v.push(a[idx])!
 			}
 			op_aset {
 				v.ip++
@@ -276,8 +328,10 @@ fn (mut v Vm) exec() ! {
 					v.push(v.enc_int(i64(v.arrays[v.hand(h)].len)))!
 				} else if v.is_struct(h) && v.valid_struct_handle(h) {
 					v.push(v.enc_int(i64(v.structs[v.hand(h)].fields.len)))!
+				} else if v.is_str(h) && v.valid_handle(h) {
+					v.push(v.enc_int(i64(v.strings[v.hand(h)].runes().len)))!
 				} else {
-					return error('len() on a non-array, non-struct value')
+					return error('len() on a non-array, non-struct, non-string value')
 				}
 			}
 			op_apush {
@@ -370,6 +424,139 @@ fn (mut v Vm) exec() ! {
 			op_skeys {
 				v.op_skeys()!
 			}
+			op_slice {
+				v.op_slice()!
+			}
+			op_native {
+				v.ip++
+				id := int(v.read_i64())
+				argc := int(v.read_i64())
+				v.native(id, argc)!
+			}
+			op_and_b {
+				v.ip++
+				b := v.pop()!
+				a := v.pop()!
+				v.push(v.enc_int(v.dec_int(a) & v.dec_int(b)))!
+			}
+			op_or_b {
+				v.ip++
+				b := v.pop()!
+				a := v.pop()!
+				v.push(v.enc_int(v.dec_int(a) | v.dec_int(b)))!
+			}
+			op_xor {
+				v.ip++
+				b := v.pop()!
+				a := v.pop()!
+				v.push(v.enc_int(v.dec_int(a) ^ v.dec_int(b)))!
+			}
+			op_shl {
+				v.ip++
+				b := v.pop()!
+				a := v.pop()!
+				x := v.dec_int(a)
+				y := u32(v.dec_int(b))
+				v.push(v.enc_int(x << y))!
+			}
+			op_shr {
+				v.ip++
+				b := v.pop()!
+				a := v.pop()!
+				x := v.dec_int(a)
+				y := u32(v.dec_int(b))
+				v.push(v.enc_int(x >> y))!
+			}
+			op_not_b {
+				v.ip++
+				a := v.pop()!
+				v.push(v.enc_int(~v.dec_int(a)))!
+			}
+			op_try {
+				v.ip++
+				catch_ip := int(v.read_i64())
+				v.handlers << Handler{ ip: catch_ip, bp: v.bp, sp: v.sp }
+			}
+			op_throw {
+				v.ip++
+				err_val := v.pop()!
+				if v.handlers.len == 0 {
+					return error('unhandled throw: ${v.val_str(err_val, 0)}')
+				}
+				h := v.handlers[v.handlers.len - 1]
+				v.handlers.delete_last()
+				v.bp = h.bp
+				v.sp = h.sp
+				v.push(err_val)!
+				v.ip = h.ip
+			}
+			op_catch_done {
+				v.ip++
+				if v.handlers.len > 0 {
+					v.handlers.delete_last()
+				}
+			}
+			op_closure {
+				v.ip++
+				entry := int(v.read_i64())
+				v.closures << Closure{ entry: entry }
+				v.push(v.mkclosure(v.closures.len - 1))!
+			}
+			op_call_closure {
+				v.ip++
+				argc := int(v.read_i64())
+				// stack: [...closure, arg_0, ..., arg_{argc-1}]
+				h := v.stack[v.sp - argc - 1]
+				if !v.is_closure(h) || !v.valid_closure_handle(h) {
+					return error('cannot call a non-function value')
+				}
+				entry := v.closures[v.hand(h)].entry
+				// Shift args left to overwrite the closure slot, then
+				// insert a return-value placeholder so the callee's
+				// retv never overwrites the caller's local that held
+				// the closure handle.
+				for i := 0; i < argc; i++ {
+					v.stack[v.sp - argc - 1 + i] = v.stack[v.sp - argc + i]
+				}
+				v.stack[v.sp - 1] = v.enc_int(0) // return-value placeholder
+				v.sp-- // closure was removed; unwind one slot
+				v.call(entry, argc)
+			}
+			op_argc {
+				v.ip++
+				argc := v.dec_int(v.stack[v.bp - 1])
+				v.push(v.enc_int(argc))!
+			}
+			op_load_dyn {
+				v.ip++
+				idx := int(v.dec_int(v.pop()!))
+				if v.bp + idx < 0 || v.bp + idx >= v.sp {
+					return error('dynamic load index ${idx} out of range')
+				}
+				v.push(v.stack[v.bp + idx])!
+			}
+			op_varargs {
+				v.ip++
+				named := int(v.read_i64())
+				dst := int(v.read_i64())
+				argc := int(v.dec_int(v.stack[v.bp - 1]))
+				mut n := argc - named
+				if n < 0 {
+					n = 0
+				}
+				mut arr := []i64{len: n}
+				for i in 0..n {
+					arr[i] = v.stack[v.bp + named + i]
+				}
+				v.arrays << arr
+				v.stack[v.bp + dst] = v.mkarr(v.arrays.len - 1)
+			}
+			op_str_method {
+				v.ip++
+				sidx := int(v.read_i64())
+				argc := int(v.read_i64())
+				v.str_method(v.strings[sidx], argc)!
+			}
 			else {
 				return error('unknown opcode ${op} at ip ${v.ip}')
 			}
@@ -453,6 +640,60 @@ fn (mut v Vm) op_skeys() ! {
 	v.push(v.mkarr(v.arrays.len - 1))!
 }
 
+// op_slice slices an array or string: stack = [value, start, end] → sliced value.
+// end == -1 means "open-ended" (slice to the end).
+fn (mut v Vm) op_slice() ! {
+	v.ip++
+	end_val := v.dec_int(v.pop()!)
+	start_val := v.dec_int(v.pop()!)
+	h := v.pop()!
+	// --- array slicing ---
+	if v.is_arr(h) && v.valid_arr_handle(h) {
+		arr := v.arrays[v.hand(h)]
+		mut s := if start_val < 0 { 0 } else { int(start_val) }
+		mut e := if end_val < 0 { arr.len } else { int(end_val) }
+		if s > arr.len {
+			s = arr.len
+		}
+		if e > arr.len {
+			e = arr.len
+		}
+		if s > e {
+			e = s
+		}
+		mut sliced := []i64{}
+		for i in s..e {
+			sliced << arr[i]
+		}
+		v.arrays << sliced
+		v.push(v.mkarr(v.arrays.len - 1))!
+		return
+	}
+	// --- string slicing ---
+	if v.is_str(h) && v.valid_handle(h) {
+		src := v.strings[v.hand(h)]
+		runes := src.runes()
+		mut s := if start_val < 0 { 0 } else { int(start_val) }
+		mut e := if end_val < 0 { runes.len } else { int(end_val) }
+		if s > runes.len {
+			s = runes.len
+		}
+		if e > runes.len {
+			e = runes.len
+		}
+		if s > e {
+			e = s
+		}
+		mut sliced := ''
+		for i in s..e {
+			sliced += runes[i].str()
+		}
+		v.push(v.alloc_str(sliced))!
+		return
+	}
+	return error('slice() on a non-array, non-string value')
+}
+
 fn (mut v Vm) read_i64() i64 {
 	mut val := u64(0)
 	for i in 0..8 {
@@ -460,6 +701,15 @@ fn (mut v Vm) read_i64() i64 {
 	}
 	v.ip += 8
 	return i64(val)
+}
+
+fn (mut v Vm) read_f64() f64 {
+	mut val := u64(0)
+	for i in 0..8 {
+		val |= u64(v.code[v.ip + i]) << u32(8 * i)
+	}
+	v.ip += 8
+	return math.f64_from_bits(val)
 }
 
 fn (mut v Vm) push(x i64) ! {

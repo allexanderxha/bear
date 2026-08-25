@@ -5,7 +5,9 @@ pub enum TokKind {
 	eof
 	ident
 	int_lit
+	float_lit
 	str_lit
+	str_interp
 	lparen
 	rparen
 	lbrace
@@ -20,6 +22,12 @@ pub enum TokKind {
 	star
 	slash
 	percent
+	amp
+	pipe
+	caret
+	tilde
+	lt_lt
+	gt_gt
 	eq_eq
 	not_eq
 	lt
@@ -56,6 +64,10 @@ pub enum TokKind {
 	kw_import
 	kw_enum
 	kw_const
+	kw_interface
+	kw_try
+	kw_catch
+	kw_throw
 }
 
 pub struct Tok {
@@ -63,4 +75,5 @@ pub:
 	kind TokKind
 	lit  string
 	line int
+	col  int // 1-based column within the line
 }

@@ -3,6 +3,7 @@ module compiler
 
 pub enum ExprKind {
 	int_lit
+	float_lit
 	str_lit
 	bool_lit
 	ident
@@ -11,7 +12,9 @@ pub enum ExprKind {
 	index
 	field
 	method_call
+	slice
 	unary
+	anon_fn
 	binary
 	call
 }
@@ -25,22 +28,31 @@ pub mut:
 
 pub struct Expr {
 pub mut:
-	kind   ExprKind
-	int_v  i64
-	str_v  string
+	kind    ExprKind
+	int_v   i64
+	float_v f64
+	str_v   string
 	name   string // ident/call name, or the field name of a `.field` access
 	op     TokKind
 	left   &Expr = unsafe { nil }
 	right  &Expr = unsafe { nil }
+	extra  &Expr = unsafe { nil } // slice: end index expression
 	elems  []Expr
 	fields []StructField // struct_lit: the named fields
-	args   []Expr
-	line   int
+	args     []Expr
+	type_args []string // call: explicit generic type arguments (first[int](...))
+	fparams  []string // anon_fn: parameter names
+	fdefaults []Expr  // anon_fn: default values (parallel to fparams)
+	fhas_defs []bool  // anon_fn: which params have defaults
+	fvariadic bool    // anon_fn: last param is variadic
+	fn_body  []Stmt   // anon_fn: function body
+	line     int
 }
 
 pub enum StmtKind {
 	expr_stmt
 	let_stmt
+	destruct_stmt
 	assign_stmt
 	index_assign
 	field_assign
@@ -53,6 +65,8 @@ pub enum StmtKind {
 	continue_stmt
 	ret_stmt
 	assert_stmt
+	try_stmt
+	throw_stmt
 }
 
 // MatchArm is a single `value { body }` arm of a match statement.
@@ -66,6 +80,9 @@ pub struct Stmt {
 pub mut:
 	kind      StmtKind
 	target    string
+	idx_target string // for_in_stmt: index variable name (empty when unused)
+	destruct_targets []string // destruct_stmt: names to bind
+	destruct_field   bool     // destruct_stmt: struct ({ a, b }) vs array ([a, b])
 	expr      Expr
 	cond      Expr
 	base      Expr // index_assign: the indexed expression
@@ -90,10 +107,14 @@ pub mut:
 
 pub struct FnDecl {
 pub mut:
-	name      string
-	recv_name string // method receiver local name ('' for plain functions)
-	recv_type string // method receiver struct type ('' for plain functions)
+	name       string
+	type_params []string // generic type parameters (fn first[T, U](...) { ... })
+	recv_name  string // method receiver local name ('' for plain functions)
+	recv_type  string // method receiver struct type ('' for plain functions)
 	params    []string
+	defaults  []Expr // parallel to params; empty Expr{} when no default
+	has_defs  []bool // parallel to params: whether a default exists
+	variadic  bool   // last param is variadic (nums...)
 	body      []Stmt
 	line      int
 }
@@ -120,11 +141,28 @@ pub mut:
 	line  int
 }
 
+// InterfaceDecl is an `interface Name { method1(); method2() type }` declaration.
+// Methods are stored as (name, return_type) pairs. The interface is satisfied
+// by any struct that implements all listed methods (structural/duck typing).
+pub struct InterfaceDecl {
+pub mut:
+	name    string
+	methods []InterfaceMethod
+	line    int
+}
+
+pub struct InterfaceMethod {
+pub mut:
+	name string
+	line int
+}
+
 pub struct Program {
 pub mut:
-	fns     []FnDecl
-	structs []StructDecl
-	enums   []EnumDecl
-	imports []ImportDecl
-	consts  []ConstDecl
+	fns        []FnDecl
+	structs    []StructDecl
+	enums      []EnumDecl
+	imports    []ImportDecl
+	consts     []ConstDecl
+	interfaces []InterfaceDecl
 }

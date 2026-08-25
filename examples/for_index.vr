@@ -1,0 +1,35 @@
+// for i, v in arr — iterate with both index and value
+
+fn main() {
+    let fruits = ["apple", "banana", "cherry"]
+    
+    // basic indexed iteration
+    for i, v in fruits {
+        println("${i}: ${v}")
+    }
+    
+    // use the index for computation
+    let nums = [10, 20, 30, 40, 50]
+    let sum = 0
+    for i, v in nums {
+        if i % 2 == 0 {
+            sum += v
+        }
+    }
+    println("sum of even-indexed elements: ${sum}")
+    
+    // build a new array using index
+    let letters = ["a", "b", "c", "d"]
+    let tagged = []
+    for i, v in letters {
+        push(tagged, "${v}${i}")
+    }
+    println(tagged)
+    
+    // plain for-in still works (no index)
+    for v in fruits {
+        print(v)
+        print(" ")
+    }
+    println("")
+}
