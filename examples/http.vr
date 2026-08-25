@@ -1,0 +1,34 @@
+// http.vr — the HTTP client (needs network access).
+//   vr run examples/http.vr
+//
+// http.get / http.post return a struct with `status` (int) and `body`
+// (string). Network failures throw and can be caught with try/catch;
+// HTTP-level errors (404, 500) come back as normal responses.
+
+import http
+import json
+
+fn main() {
+	let res = http.get("https://httpbin.org/get")
+	println("status: " + str(res.status))
+
+	let data = json.decode(res.body)
+	println("your IP (from httpbin): " + str(data.origin))
+
+	let post = http.post("https://httpbin.org/post", "name=vuurraaf")
+	let echo = json.decode(post.body)
+	println("echoed: " + str(echo.data))
+
+	// a 404 is a response, not an exception
+	let nf = http.get("https://httpbin.org/status/404")
+	println("not found status: " + str(nf.status))
+
+	// network failures are catchable
+	try {
+		http.get("http://127.0.0.1:1/nope")
+		println("unreachable")
+	} catch e {
+		println("caught connection error")
+	}
+	println("done")
+}

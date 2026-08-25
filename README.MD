@@ -157,6 +157,23 @@ Build builtins:
 `examples/build.vrmm` for a tour (targets: `main`, `multi`, `test`, `bench`,
 `deploy`, `clean`).
 
+## Standard library modules
+
+The toolchain ships a small stdlib in `lib/`, imported by name like in V
+(`import os` resolves against `lib/` and `vendor/` from any directory).
+Module functions are namespaced: `os.exists()`, `json.encode()`, ...
+
+| module | functions |
+| --- | --- |
+| `os` | filesystem + process: `exists`, `is_dir`, `is_file`, `mkdir`, `remove`, `copy`, `list_dir`, `glob`, `join`, `base`, `dir`, `read_lines`, `write_lines`, `cwd`, `env`, `exec` |
+| `json` | `encode`, `decode`, `pretty` — objects become structs, integral numbers decode as ints, `null` ⇄ `none` |
+| `strings` | `length`, `lines`, `split`, `join`, `replace`, `contains`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `pad`, `pad_left`, `repeat`, `format`, `capitalize` |
+| `math` | `abs`, `min`, `max`, `floor`, `ceil`, `round`, `sqrt`, `pow`, `clamp`, `sign`, `pi` |
+| `http` | `get(url)`, `post(url, data)`, `get_text(url)` — return `{status, body}`; network failures throw (catchable), HTTP errors (404) are normal responses |
+| `time` | `now()` (epoch s), `ms()` (epoch ms), `format(t, "YYYY-MM-DD HH:mm:ss")`, `date(t)`, `clock(t)`, `parse("2026-08-25 13:36:45")` — Moment-style tokens |
+
+Examples: `examples/imports.vr`, `examples/http.vr`, `examples/time.vr`.
+
 ## The VuurRaaf language
 
 A small, V-flavored language. Values are 64-bit integers, 64-bit floats,
@@ -260,6 +277,10 @@ fn main() {
 - bitwise operators: `& | ^ ~ << >>`
 - host builtins: `read_file` / `write_file`, `args()`, `getenv` / `setenv`,
   `exit`, `sleep`, `time()`, `type(x)`, `str(x)`, `int(x)`, `split` / `join`
+- HTTP: `http_get(url)` / `http_post(url, data)` return `{status, body}`
+  structs and throw on network failure (catchable) — or use `import http`
+- date/time: `now()` (epoch s), `time_ms()`, `format_time(t, "YYYY-MM-DD")`,
+  `parse_time(s)` (ISO timestamps) — or use `import time`
 - JSON: `json_encode(x)` / `json_decode(s)` — objects become structs, arrays
   become arrays, integral numbers decode as ints, `null` decodes to `none`
 - `none`: a literal for "no value" (JSON null); `x == none` compares,

@@ -1,0 +1,36 @@
+// time.vr — date/time helpers (part of the VuurRaaf stdlib).
+//
+//   import time
+//   println(time.format(time.now(), "YYYY-MM-DD HH:mm:ss"))
+//   println(time.format(time.now(), "YYYY-MM-DD"))
+//
+// Tokens follow the Moment.js style: YYYY (year), MM (month), DD (day),
+// HH (24h hour), mm (minute), ss (second), plus literals like "-", ":".
+// All values are Unix epoch seconds. `time.parse` accepts common ISO
+// timestamps like "2026-08-25 14:03:22".
+
+fn now() {
+	return now()
+}
+
+fn ms() {
+	return time_ms()
+}
+
+fn format(t, spec) {
+	return format_time(t, spec)
+}
+
+fn parse(s) {
+	return parse_time(s)
+}
+
+// date(t) formats just the calendar day: YYYY-MM-DD.
+fn date(t) {
+	return format_time(t, "YYYY-MM-DD")
+}
+
+// clock(t) formats just the wall clock: HH:mm:ss.
+fn clock(t) {
+	return format_time(t, "HH:mm:ss")
+}

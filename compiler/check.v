@@ -232,12 +232,17 @@ fn (mut c Checker) check_stmt(st Stmt) ! {
 			c.loop_depth--
 		}
 		.for_in_stmt {
-			seq := c.check_expr(st.expr)!
-			// iterate enums and arrays; unknown is allowed (dynamic)
-			if seq.kind == .int_t || seq.kind == .float_t || seq.kind == .bool_t || seq.kind == .none_t {
-				return error('cannot iterate a ${type_name(seq.kind)} (line ${st.line})')
+			// for x in EnumName { ... } iterates the enum's variants
+			if st.expr.kind == .ident && st.expr.name in c.enums {
+				c.types[st.target] = TypeInfo{ kind: .enum_t, name: st.expr.name }
+			} else {
+				seq := c.check_expr(st.expr)!
+				// iterate enums and arrays; unknown is allowed (dynamic)
+				if seq.kind == .int_t || seq.kind == .float_t || seq.kind == .bool_t || seq.kind == .none_t {
+					return error('cannot iterate a ${type_name(seq.kind)} (line ${st.line})')
+				}
+				c.types[st.target] = TypeInfo{ kind: .unknown }
 			}
-			c.types[st.target] = TypeInfo{ kind: .unknown }
 			if st.idx_target.len > 0 {
 				c.types[st.idx_target] = TypeInfo{ kind: .int_t }
 			}
@@ -328,9 +333,14 @@ fn (mut c Checker) check_expr(e Expr) !TypeInfo {
 			TypeInfo{ kind: .unknown }
 		}
 		.field {
+			// enum variant: Color.red — the base is the enum type name, not a
+			// variable, so it must be resolved before check_expr on the base
+			if e.left.kind == .ident && e.left.name in c.enums {
+				return TypeInfo{ kind: .enum_t, name: e.left.name }
+			}
 			base := c.check_expr(*e.left)!
 			c.expect_struct_like(base, 'field access', e.line)!
-			// enum variant: Color.red  →  enum_t
+			// enum variant on an enum-typed receiver: Color.red  →  enum_t
 			if base.kind == .enum_t {
 				return TypeInfo{ kind: .enum_t, name: base.name }
 			}
@@ -599,6 +609,11 @@ fn builtin_result_type(name string) TypeInfo {
 		'build_glob', 'build_ls' { TypeInfo{ kind: .array_t } }
 		'build_run', 'build_test', 'build_bench', 'build_clean', 'build_exec_status',
 		'build_exists', 'build_mkdir', 'build_rm', 'build_copy' { TypeInfo{ kind: .int_t } }
+		// HTTP client: returns a {status, body} struct
+		'http_get', 'http_post' { TypeInfo{ kind: .struct_t } }
+		// date/time
+		'now', 'time_ms', 'parse_time' { TypeInfo{ kind: .int_t } }
+		'format_time' { TypeInfo{ kind: .string_t } }
 		else { TypeInfo{ kind: .unknown } }
 	}
 }

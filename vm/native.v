@@ -11,6 +11,7 @@ import os
 import math
 import rand
 import time
+import net.http
 import obj
 import compiler
 import assembler
@@ -647,10 +648,52 @@ fn (mut v Vm) native(id int, _argc int) ! {
 			s := v.json_pretty_value(x, 0) or { return error('json_pretty: ${err.msg()}') }
 			v.push(v.alloc_str(s))!
 		}
+		// -------------------------------------------------------------------
+		// HTTP client
+		native_http_get {
+			url := v.pop_str()!
+			resp := http.get(url) or { return error('http_get: ${err.msg()}') }
+			v.push_http_response(resp)!
+		}
+		native_http_post {
+			data := v.pop_str()!
+			url := v.pop_str()!
+			resp := http.post(url, data) or { return error('http_post: ${err.msg()}') }
+			v.push_http_response(resp)!
+		}
+		// -------------------------------------------------------------------
+		// date/time
+		native_now {
+			v.push(v.enc_int(time.now().unix()))!
+		}
+		native_time_ms {
+			v.push(v.enc_int(time.now().unix_milli()))!
+		}
+		native_format_time {
+			spec := v.pop_str()!
+			t := v.dec_int(v.pop()!)
+			v.push(v.alloc_str(time.unix(t).custom_format(spec)))!
+		}
+		native_parse_time {
+			s := v.pop_str()!
+			t := time.parse(s) or { return error('parse_time: ${err.msg()}') }
+			v.push(v.enc_int(t.unix()))!
+		}
 		else {
 			return error('unknown native builtin ${id}')
 		}
 	}
+}
+
+// push_http_response wraps an HTTP response as a {status, body} struct value
+// so scripts can read res.status and res.body.
+fn (mut v Vm) push_http_response(resp http.Response) ! {
+	body_h := v.alloc_str(resp.body)
+	mut fields := []Field{len: 2}
+	fields[0] = Field{ name: 'status', val: v.enc_int(i64(resp.status_code)) }
+	fields[1] = Field{ name: 'body', val: body_h }
+	v.structs << StructVal{ fields: fields }
+	v.push(v.mkstruct_handle(v.structs.len - 1))!
 }
 
 // ---------------------------------------------------------------------------

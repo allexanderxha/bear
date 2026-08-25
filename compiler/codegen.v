@@ -974,6 +974,14 @@ fn builtin_spec(name string) (int, int) {
 		'build_is_dir' { native_build_is_dir, 1 }
 		'cwd' { native_cwd, 0 }
 		'json_pretty' { native_json_pretty, 1 }
+		// HTTP client
+		'http_get' { native_http_get, 1 }
+		'http_post' { native_http_post, 2 }
+		// date/time
+		'now' { native_now, 0 }
+		'time_ms' { native_time_ms, 0 }
+		'format_time' { native_format_time, 2 }
+		'parse_time' { native_parse_time, 1 }
 		else { -1, 0 }
 	}
 }

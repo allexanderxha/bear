@@ -140,3 +140,13 @@ const native_repeat = 164
 const native_build_is_dir = 165
 const native_cwd = 166
 const native_json_pretty = 167
+
+// HTTP client builtins
+const native_http_get = 168
+const native_http_post = 169
+
+// date/time builtins
+const native_now = 170
+const native_time_ms = 171
+const native_format_time = 172
+const native_parse_time = 173

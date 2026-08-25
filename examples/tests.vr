@@ -5,6 +5,15 @@ import os
 import json
 import strings
 import math
+import http
+import time
+
+enum Suit {
+	hearts
+	diamonds
+	clubs
+	spades
+}
 
 fn add(a, b) {
 	return a + b
@@ -310,7 +319,7 @@ fn test_module_imports() {
 	}
 	assert os.base("a/b/c.vr") == "c.vr"
 	assert os.dir("a/b/c.vr") == "a/b"
-	assert len(os.glob("lib/*.vr")) == 4
+	assert len(os.glob("lib/*.vr")) == 6
 	let tmp = os.join(os.cwd(), "tmp_test.txt")
 	os.write_lines(tmp, ["x", "y"])
 	assert len(os.read_lines(tmp)) == 2
@@ -379,6 +388,71 @@ fn test_closures() {
 		return "[" + t + "]"
 	}
 	assert tag("warn") == "[warn]"
+}
+
+fn test_enums() {
+	// variant values
+	assert Suit.hearts == 0
+	assert Suit.spades == 3
+	// enum.count()
+	assert Suit.hearts.count() == 4
+	// enum.to_string()
+	assert Suit.spades.to_string() == "spades"
+	// enums in expressions
+	let next = Suit.hearts + 1
+	assert next == 1
+	// enum iteration
+	let names = []
+	for s in Suit {
+		names = push(names, s.to_string())
+	}
+	assert len(names) == 4
+	assert names[0] == "hearts"
+	assert names[3] == "spades"
+	// match on enum values
+	assert suit_code(Suit.clubs) == "c"
+	assert suit_code(Suit.hearts) == "h"
+}
+
+fn suit_code(s) {
+	match s {
+		Suit.hearts { return "h" }
+		Suit.clubs { return "c" }
+		else { return "?" }
+	}
+}
+
+fn test_http_errors() {
+	// offline-safe: connecting to a closed local port fails fast
+	try {
+		http.get("http://127.0.0.1:1/nope")
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+}
+
+fn test_time() {
+	let t = time.now()
+	assert t > 1700000000
+	// format produces fixed-width strings
+	let day = time.date(t)
+	assert len(day) == 10
+	assert day[4] == "-"[0]
+	let full = time.format(t, "YYYY-MM-DD HH:mm:ss")
+	assert len(full) == 19
+	// parse round-trips within a second
+	let back = time.parse(full)
+	assert abs(back - t) <= 1
+	// ms is more precise than seconds
+	assert time.ms() > t * 1000
+	// invalid input throws
+	try {
+		time.parse("not a date")
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
 }
 
 fn test_failing() {
