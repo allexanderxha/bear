@@ -230,7 +230,7 @@ Module functions are namespaced: `os.exists()`, `json.encode()`, ...
 | `crypto` | `sha256(s)`, `md5(s)`, `base64_encode(s)`, `base64_decode(s)` |
 | `cli` | getopt-style flag parsing over `args()`: `flag(name, default)`, `has(name)`, `positional()` — supports `--name value`, `--name=value`, boolean `--flag`, and short aliases `-n=value` |
 
-Examples: `examples/imports.vr`, `examples/http.vr`, `examples/time.vr`, `examples/cli_tool.vr` (CLI flags + interactive input + typed errors), `examples/stdlib.vr` (tests for the regex/crypto/csv/os/time additions).
+Examples: `examples/imports.vr`, `examples/http.vr`, `examples/time.vr`, `examples/cli_tool.vr` (CLI flags + interactive input + typed errors), `examples/defer_reflection.vr` (`defer`, `in`, `type_info`, `range`), `examples/stdlib.vr` (tests for the regex/crypto/csv/os/time additions).
 
 ## The VuurRaaf language
 
@@ -382,6 +382,16 @@ fn main() {
   `try { } catch e { }` like explicit `throw`s
 - for loops: `for x in arr { }` and ranges `for i in 0..10 { }` /
   `for i in 0...10 { }`; loop variables are scoped to the loop body
+- `defer <stmt>` runs the statement when the function exits (LIFO, on every
+  return path), so file/resource cleanup reads naturally: `defer remove(tmp)`
+- `x in col` membership operator works on arrays (`2 in [1,2,3]`), maps
+  (`"key" in m`), and strings (`"sub" in s`), and with `not` (`not (x in a)`)
+- `type_info(v)` reflects any value into a `{kind, is_number, is_int, is_float,
+  is_string, is_array, is_struct, is_none, is_closure, len, fields, contents}`
+  struct for duck-typing and generic utilities
+- `range(a, b)` builds `[a, a+1, ..., b)` (descends when `a > b`) as an array
+- reflection: `type(x)` returns "int"/"float"/"string"/"array"/"struct"/
+  "none"/"closure"; `keys(m)`, `has(m, k)`, `len(m)` inspect records
 - `break` / `continue` inside `while` and `for` loops (in `for` loops
   `continue` advances the loop variable / iterator first)
 - else-if chains: `if a { } else if b { } else { }`

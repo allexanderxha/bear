@@ -632,6 +632,27 @@ fn (mut v Vm) exec() ! {
 			op_slice {
 				v.op_slice()!
 			}
+			op_in {
+				v.ip++
+				col := v.pop()!
+				needle := v.pop()!
+				// map/struct: string key membership
+				if v.is_struct(col) && v.valid_struct_handle(col) {
+					if v.is_str(needle) && v.valid_handle(needle) {
+						key := v.strings[v.hand(needle)]
+						v.push(v.enc_int(if key in v.structs[v.hand(col)].by_name { 1 } else { 0 }))!
+					} else {
+						v.push(v.enc_int(0))!
+					}
+				} else if v.is_arr(col) && v.valid_arr_handle(col) {
+					found := v.arr_contains(v.arrays[v.hand(col)], needle)
+					v.push(v.enc_int(if found { 1 } else { 0 }))!
+				} else if v.is_str(col) && v.valid_handle(col) && v.is_str(needle) && v.valid_handle(needle) {
+					v.push(v.enc_int(if v.strings[v.hand(col)].contains(v.strings[v.hand(needle)]) { 1 } else { 0 }))!
+				} else {
+					v.push(v.enc_int(0))!
+				}
+			}
 			op_native {
 				v.ip++
 				id := int(v.read_i64())
@@ -1003,6 +1024,25 @@ fn (mut v Vm) call(target int, argc int) {
 	}
 	v.sp = v.bp + argc
 	v.ip = target
+}
+
+// arr_contains reports whether an array holds a value equal to needle
+// (comparing ints/floats numerically and strings by content).
+fn (mut v Vm) arr_contains(a []i64, needle i64) bool {
+	for el in a {
+		if v.vals_eq(el, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// vals_eq compares two values for equality, treating int/float numerically.
+fn (mut v Vm) vals_eq(x i64, y i64) bool {
+	if (v.is_float(x) || v.is_float(y)) && !v.is_closure(x) && !v.is_closure(y) && !v.is_str(x) && !v.is_str(y) && !v.is_arr(x) && !v.is_arr(y) && !v.is_struct(x) && !v.is_struct(y) {
+		return v.to_f64(x) == v.to_f64(y)
+	}
+	return x == y
 }
 
 fn (mut v Vm) ret(with_val bool) ! {

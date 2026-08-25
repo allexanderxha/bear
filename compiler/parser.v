@@ -403,6 +403,11 @@ fn (mut p Parser) parse_stmt() !Stmt {
 			body := p.parse_block()!
 			return Stmt{ kind: .for_in_stmt, target: val_name, idx_target: idx_name, expr: first, body: body, line: t.line }
 		}
+		.kw_defer {
+			p.advance()
+			inner := p.parse_stmt()!
+			return Stmt{ kind: .defer_stmt, body: [inner], line: t.line }
+		}
 		.kw_return {
 			p.advance()
 			mut e := Expr{}
@@ -664,7 +669,7 @@ fn (mut p Parser) parse_eq() !Expr {
 
 fn (mut p Parser) parse_rel() !Expr {
 	mut e := p.parse_shift()!
-	for p.cur().kind == .lt || p.cur().kind == .le || p.cur().kind == .gt || p.cur().kind == .ge {
+	for p.cur().kind == .lt || p.cur().kind == .le || p.cur().kind == .gt || p.cur().kind == .ge || p.cur().kind == .kw_in {
 		op := p.advance()
 		rhs := p.parse_shift()!
 		e = bin_node(op.kind, e, rhs, op.line)

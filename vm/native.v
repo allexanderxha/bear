@@ -118,6 +118,15 @@ fn (mut v Vm) native(id int, _argc int) ! {
 			x := v.pop()!
 			v.push(v.alloc_str(v.type_name(x)))!
 		}
+		native_type_info {
+			x := v.pop()!
+			v.push(v.type_info_value(x))!
+		}
+		native_range {
+			b := v.pop()!
+			a := v.pop()!
+			v.push(v.range_value(a, b))!
+		}
 		native_split {
 			delim := v.pop_str()!
 			s := v.pop_str()!
@@ -1239,6 +1248,12 @@ fn (mut v Vm) type_name(x i64) string {
 	if v.is_float(x) {
 		return 'float'
 	}
+	if v.is_none(x) {
+		return 'none'
+	}
+	if v.is_closure(x) {
+		return 'closure'
+	}
 	if v.is_arr(x) {
 		return 'array'
 	}
@@ -1246,6 +1261,74 @@ fn (mut v Vm) type_name(x i64) string {
 		return 'struct'
 	}
 	return 'int'
+}
+
+// type_info_value reflects a value into a struct for generic/duck-typed code:
+// { kind, is_number, is_int, is_float, is_string, is_array, is_struct,
+//   is_none, is_closure, len, fields } where `fields` is the array of field
+// names (structs) and `len` is the element/character count for arrays/strings.
+fn (mut v Vm) type_info_value(x i64) i64 {
+	kind := v.type_name(x)
+	is_int := v.is_int(x)
+	is_float := v.is_float(x)
+	is_string := v.is_str(x) && v.valid_handle(x)
+	is_array := v.is_arr(x) && v.valid_arr_handle(x)
+	is_struct := v.is_struct(x) && v.valid_struct_handle(x)
+	is_none := v.is_none(x)
+	is_closure := v.is_closure(x) && v.valid_closure_handle(x)
+	is_number := is_int || is_float
+	// len: array -> element count; string -> character count; struct -> field count
+	mut length := 0
+	if is_array {
+		length = v.arrays[v.hand(x)].len
+	} else if is_string {
+		length = v.strings[v.hand(x)].runes().len
+	} else if is_struct {
+		length = v.structs[v.hand(x)].fields.len
+	}
+	// fields: array of struct field names (empty otherwise)
+	mut names := []i64{}
+	if is_struct {
+		for f in v.structs[v.hand(x)].fields {
+			v.strings << f.name
+			names << v.mkstr(v.strings.len - 1)
+		}
+	}
+	v.arrays << names
+	field_h := v.mkarr(v.arrays.len - 1)
+	mut fields := []Field{}
+	fields << Field{ name: 'kind', val: v.alloc_str(kind) }
+	fields << Field{ name: 'is_number', val: v.enc_int(if is_number { 1 } else { 0 }) }
+	fields << Field{ name: 'is_int', val: v.enc_int(if is_int { 1 } else { 0 }) }
+	fields << Field{ name: 'is_float', val: v.enc_int(if is_float { 1 } else { 0 }) }
+	fields << Field{ name: 'is_string', val: v.enc_int(if is_string { 1 } else { 0 }) }
+	fields << Field{ name: 'is_array', val: v.enc_int(if is_array { 1 } else { 0 }) }
+	fields << Field{ name: 'is_struct', val: v.enc_int(if is_struct { 1 } else { 0 }) }
+	fields << Field{ name: 'is_none', val: v.enc_int(if is_none { 1 } else { 0 }) }
+	fields << Field{ name: 'is_closure', val: v.enc_int(if is_closure { 1 } else { 0 }) }
+	fields << Field{ name: 'len', val: v.enc_int(i64(length)) }
+	fields << Field{ name: 'fields', val: field_h }
+	fields << Field{ name: 'contents', val: x }
+	v.structs << StructVal{ fields: fields, by_name: v.index_fields(fields) }
+	return v.mkstruct_handle(v.structs.len - 1)
+}
+
+// range_value builds the array [a, a+1, ..., b) as ints.
+fn (mut v Vm) range_value(a i64, b i64) i64 {
+	start := v.dec_int(a)
+	end := v.dec_int(b)
+	mut arr := []i64{}
+	if start <= end {
+		for i := start; i < end; i++ {
+			arr << v.enc_int(i)
+		}
+	} else {
+		for i := start; i > end; i-- {
+			arr << v.enc_int(i)
+		}
+	}
+	v.arrays << arr
+	return v.mkarr(v.arrays.len - 1)
 }
 
 // str_method dispatches a string method call. The receiver was pushed before

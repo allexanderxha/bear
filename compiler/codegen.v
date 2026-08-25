@@ -47,6 +47,12 @@ mut:
 	modules   map[string]bool // imported module names (bare `import os`)
 	fn_names  map[string]bool // top-level function names usable as closure values
 	captures  []string        // enclosing locals captured by the closure being compiled
+	defers    []Stmt        // deferred statements of the current function (in order)
+	has_defers bool          // current function registers deferred cleanup
+	defer_ret_slot int      // hidden local holding the return value while defers run
+	defer_value_seen bool   // a `return expr` (value) appeared, so restore+retv after defers
+	cur_defer_label string // label of the current function's deferred-cleanup block
+	namer_id  int            // unique-id source for generated label names
 }
 
 fn gen(prog Program) !obj.Obj {
@@ -226,10 +232,45 @@ fn (mut g Gen) gen_fn(fd FnDecl) ! {
 		g.code << obj.encode_i64(i64(g.argc))
 		g.code << obj.encode_i64(i64(vidx))
 	}
+	// one-pass defer handling: collect every `defer` statement in the body first
+	// (so all returns can be redirected to the deferred-cleanup block), then
+	// reserve a hidden slot to hold the return value across that block.
+	g.defers = []Stmt{}
+	g.has_defers = false
+	g.defer_value_seen = false
+	g.collect_defers(fd.body, mut g.defers)
+	if g.defers.len > 0 {
+		g.has_defers = true
+		g.defer_ret_slot = g.local_cnt
+		g.local_cnt++
+	}
+	g.cur_defer_label = g.new_label()
 	for st in fd.body {
 		g.gen_stmt(st)!
 	}
-	g.code << op_ret // trailing return for fall-through
+
+	if g.has_defers {
+		g.code << op_jmp
+		g.code << obj.encode_i64(0)
+		g.fixups << Fixup{ name: g.cur_defer_label, off: u32(g.code.len) - 8 }
+	} else {
+		g.code << op_ret // trailing return for fall-through
+	}
+	// emit the deferred-cleanup block (LIFO) then the real return here, so a
+	// `return` in the body jumps into this block and lands back on the return
+	if g.has_defers {
+		g.emit_label(g.cur_defer_label)
+		for i := g.defers.len - 1; i >= 0; i-- {
+			g.gen_stmt(g.defers[i])!
+		}
+		if g.defer_value_seen {
+			// restore the saved return value and return it
+			g.emit_load(g.defer_ret_slot)
+			g.code << op_retv
+		} else {
+			g.code << op_ret
+		}
+	}
 	// reserve all local slots: the callee may be called with fewer arguments
 	// than declared (default parameters) or more (variadic), so the frame must
 	// always cover slots 0..local_cnt-1
@@ -245,6 +286,8 @@ fn (mut g Gen) gen_fn(fd FnDecl) ! {
 	}
 	g.fixups.clear()
 	g.labels.clear()
+	g.defers = []Stmt{} // reset for the next (possibly enclosing) function
+	g.has_defers = false
 	// snapshot the live locals as debug info for the debugger: name -> slot
 	for name, slot in g.locals {
 		g.dbg_locals << obj.DbgLocal{ fn: sym, name: name, slot: slot }
@@ -519,12 +562,33 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.emit_label(end_l)
 		}
 		.ret_stmt {
-			if st.has_val {
-				g.gen_expr(st.expr)!
-				g.code << op_retv
+			if g.has_defers {
+				// save any return value in the hidden slot, jump into the
+				// deferred-cleanup block, which restores and returns it
+				if st.has_val {
+					g.defer_value_seen = true
+					g.gen_expr(st.expr)!
+					g.emit_store(g.defer_ret_slot)
+				} else {
+					g.code << op_push_i
+					g.code << obj.encode_i64(0)
+					g.emit_store(g.defer_ret_slot)
+				}
+				g.code << op_jmp
+				g.code << obj.encode_i64(0)
+				g.fixups << Fixup{ name: g.cur_defer_label, off: u32(g.code.len) - 8 }
 			} else {
-				g.code << op_ret
+				if st.has_val {
+					g.gen_expr(st.expr)!
+					g.code << op_retv
+				} else {
+					g.code << op_ret
+				}
 			}
+		}
+		.defer_stmt {
+			// collected in gen_fn's pass and emitted in the cleanup block;
+			// nothing to place at the declaration site
 		}
 		.assert_stmt {
 			g.gen_expr(st.expr)!
@@ -1047,6 +1111,9 @@ fn builtin_spec(name string) (int, int) {
 		'flag_val' { native_flag_val, 1 }
 		'flag_has' { native_flag_has, 1 }
 		'flag_positional' { native_flag_positional, 0 }
+		// structured reflection + sequence helper
+		'type_info' { native_type_info, 1 }
+		'range' { native_range, 2 }
 		'build_is_dir' { native_build_is_dir, 1 }
 		'cwd' { native_cwd, 0 }
 		'json_pretty' { native_json_pretty, 1 }
@@ -1257,6 +1324,7 @@ fn (mut g Gen) gen_binary(e Expr) ! {
 				.le { op_le }
 				.gt { op_gt }
 				.ge { op_ge }
+				.kw_in { op_in }
 				.amp { op_and_b }
 				.pipe { op_or_b }
 				.caret { op_xor }
@@ -1510,6 +1578,38 @@ fn (mut g Gen) maybe_capture(name string, bound map[string]bool, mut caps []stri
 	}
 }
 
+// collect_defers walks a statement list, gathering the inner statements of
+// every `defer` into `out` in source order. Called once per function before
+// code generation so all return sites can be redirected to the cleanup block.
+fn (mut g Gen) collect_defers(stmts []Stmt, mut out []Stmt) {
+	for st in stmts {
+		match st.kind {
+		.defer_stmt {
+			for d in st.body {
+				out << d
+			}
+		}
+			.if_stmt {
+				g.collect_defers(st.body, mut out)
+				g.collect_defers(st.els, mut out)
+			}
+			.match_stmt {
+				for a in st.arms {
+					g.collect_defers(a.body, mut out)
+				}
+				g.collect_defers(st.els_body, mut out)
+			}
+			.while_stmt, .for_range_stmt, .for_in_stmt, .try_stmt {
+				g.collect_defers(st.body, mut out)
+				if st.kind == .try_stmt {
+					g.collect_defers(st.els, mut out)
+				}
+			}
+			else {}
+		}
+	}
+}
+
 fn (mut g Gen) scan_stmt(st Stmt, mut bound map[string]bool, mut caps []string, mut seen map[string]bool) {
 	match st.kind {
 		.expr_stmt {
@@ -1622,6 +1722,11 @@ fn (mut g Gen) scan_stmt(st Stmt, mut bound map[string]bool, mut caps []string, 
 		}
 		.throw_stmt {
 			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
+		}
+		.defer_stmt {
+			for s in st.body {
+				g.scan_stmt(s, mut bound, mut caps, mut seen)
+			}
 		}
 		.break_stmt, .continue_stmt {}
 	}

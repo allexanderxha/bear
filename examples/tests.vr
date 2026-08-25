@@ -658,6 +658,83 @@ fn test_flag_parsing() {
 	assert len(flag_positional()) == 0
 }
 
+fn test_defer_cleanup() {
+	// defer runs on every exit path; its effect is visible to the caller via
+	// the shared mutable array (arrays are references).
+	let log = []
+	let a = defer_probe(log, 1)
+	assert a == 0
+	assert len(log) == 2
+	assert log[0] == "open"
+	assert log[1] == "close"
+}
+
+fn defer_probe(log, mode) {
+	push(log, "open")
+	defer push(log, "close")
+	if mode == 0 {  // early return path also runs defer
+		return 9
+	}
+	return 0
+}
+
+fn test_defer_lifo() {
+	// defers run in reverse declaration order (LIFO), all before returning
+	let logA = []
+	let r = defer_lifo(logA)
+	assert r == 0
+	assert len(logA) == 2
+	assert logA[0] == "2nd-registered"
+	assert logA[1] == "1st-registered"
+}
+
+fn defer_lifo(log) {
+	defer push(log, "1st-registered")
+	defer push(log, "2nd-registered")
+	return 0
+}
+
+fn test_in_operator() {
+	let arr = [1, 2, 3]
+	assert 2 in arr
+	assert 9 in arr == false
+	let m = {x: 1}
+	assert "x" in m
+	assert "zzz" in m == false
+	let s = "hello world"
+	assert "world" in s
+	assert "nope" in s == false
+	assert not (9 in arr)
+}
+
+fn test_range_helper() {
+	let up = range(0, 4)
+	assert len(up) == 4
+	assert up[0] == 0
+	assert up[3] == 3
+	let down = range(3, 0)
+	assert down[0] == 3
+	assert down[2] == 1
+	assert len(down) == 3
+}
+
+fn test_type_info() {
+	let ti = type_info(42)
+	assert ti.kind == "int"
+	assert ti.is_int == 1
+	assert ti.is_number == 1
+	let ts = type_info("xyz")
+	assert ts.is_string == 1
+	assert ts.len == 3
+	let tn = type_info(none)
+	assert tn.kind == "none"
+	assert tn.is_none == 1
+	let to = type_info({a: 1})
+	assert to.is_struct == 1
+	assert len(to.fields) == 1
+	assert to.fields[0] == "a"
+}
+
 fn test_failing() {
 	// this one is meant to fail — shows up in `vr test` output
 	assert 1 == 2

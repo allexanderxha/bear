@@ -68,6 +68,7 @@ pub enum StmtKind {
 	assert_stmt
 	try_stmt
 	throw_stmt
+	defer_stmt
 }
 
 // MatchArm is a single `value { body }` arm of a match statement.

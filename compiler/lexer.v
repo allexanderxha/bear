@@ -310,6 +310,7 @@ fn (mut l Lexer) lex_ident(line int, col int) Tok {
 		'interface' { TokKind.kw_interface }
 		'try' { TokKind.kw_try }
 		'catch' { TokKind.kw_catch }
+		'defer' { TokKind.kw_defer }
 		'throw' { TokKind.kw_throw }
 		else { TokKind.ident }
 	}

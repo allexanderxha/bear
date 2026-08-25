@@ -1,0 +1,53 @@
+// defer_reflection.vr — demonstrates the Batch-A features: `defer` cleanup,
+// the `in` membership operator, `type_info()` reflection, and `range()`.
+//
+//   vr run examples/defer_reflection.vr
+
+fn summarize(v) {
+    // reflection: inspect any value and build a description
+    let ti = type_info(v)
+    let kind = ti.kind
+    if ti.is_number {
+        return "a number " + str(v)
+    } else if ti.is_string {
+        return "a string of length " + str(ti.len) + ": \"" + v + "\""
+    } else if ti.is_array {
+        return "an array with " + str(ti.len) + " elements"
+    } else if ti.is_struct {
+        return "a record with fields " + str(ti.fields)
+    } else if ti.is_none {
+        return "nothing"
+    }
+    return "a " + kind
+}
+
+fn grep_lines(docs, term) {
+    // demonstrate `in` on strings + arrays, with deferred cleanup
+    let matches = []
+    defer println("  -> searched " + str(len(docs)) + " docs for \"" + term + "\"")
+    for d in docs {
+        if term in d {        // substring membership
+            push(matches, d)
+        }
+    }
+    return matches
+}
+
+fn main() {
+    // range + in + type_info
+    let nums = range(1, 6)    // [1, 2, 3, 4, 5]
+    println("nums = " + str(nums))
+    println("3 present? " + str(3 in nums))
+    println("7 present? " + str(7 in nums))
+
+    println(summarize(42))
+    println(summarize("hello"))
+    println(summarize([1, 2, 3]))
+    println(summarize({x: 1, y: 2}))
+    println(summarize(none))
+
+    println("---")
+    let docs = ["Introducing VuurRaaf", "A tiny language", "VuurRaaf: daily driver"]
+    let hits = grep_lines(docs, "VuurRaaf")
+    println("hits: " + str(hits))
+}

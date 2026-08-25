@@ -121,6 +121,7 @@ fn (mut v Vm) trace_op(op u8) {
 		op_varargs { 'varargs' }
 		op_str_method { 'str_method' }
 		op_push_none { 'push_none' }
+		op_in { 'in' }
 		else { '??' }
 	}
 	mut s := ''

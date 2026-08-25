@@ -292,6 +292,11 @@ fn (mut c Checker) check_stmt(st Stmt) ! {
 		.throw_stmt {
 			_ = c.check_expr(st.expr)!
 		}
+		.defer_stmt {
+			for s in st.body {
+				c.check_stmt(s)!
+			}
+		}
 	}
 }
 
@@ -491,7 +496,7 @@ fn (mut c Checker) check_binary(e Expr) !TypeInfo {
 			}
 			TypeInfo{ kind: .bool_t }
 		}
-		.kw_and, .kw_or {
+		.kw_and, .kw_or, .kw_in {
 			TypeInfo{ kind: .bool_t }
 		}
 		.amp, .pipe, .caret, .lt_lt, .gt_gt {
@@ -635,6 +640,8 @@ fn builtin_result_type(name string) TypeInfo {
 		'flag_val' { TypeInfo{ kind: .string_t } }
 		'flag_has' { TypeInfo{ kind: .int_t } }
 		'flag_positional' { TypeInfo{ kind: .array_t } }
+		'type_info' { TypeInfo{ kind: .struct_t } }
+		'range' { TypeInfo{ kind: .array_t } }
 		'build_is_dir' { TypeInfo{ kind: .int_t } }
 		// build-module builtins (.vrmm)
 		'build_compile', 'build_assemble', 'build_link', 'build_exec', 'build_base',

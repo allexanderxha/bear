@@ -69,6 +69,7 @@ pub enum TokKind {
 	kw_interface
 	kw_try
 	kw_catch
+	kw_defer
 	kw_throw
 }
 

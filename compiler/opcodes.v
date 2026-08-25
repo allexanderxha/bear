@@ -66,6 +66,7 @@ const op_load_dyn = u8(59) // pop idx, push stack[bp + idx]
 const op_varargs = u8(60) // <named:i64> <dst:i64> — collect args[named..argc-1] into an array at local dst
 const op_str_method = u8(61) // <name:str> <argc:i64> — call a string method (s.len(), s.contains(x), ...)
 const op_push_none = u8(62) // push the `none` sentinel
+const op_in = u8(63) // membership: x in col -> 0 or 1
 
 // native builtin ids (keep in sync with vm/opcodes.v)
 const native_abs = 100
@@ -191,3 +192,7 @@ const native_input = 196
 const native_flag_val = 197
 const native_flag_has = 198
 const native_flag_positional = 199
+
+// structured reflection + sequence helper
+const native_type_info = 200
+const native_range = 201
