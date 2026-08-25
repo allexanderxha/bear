@@ -122,7 +122,8 @@ pub mut:
 
 pub struct ImportDecl {
 pub mut:
-	path string
+	path string // the file to load (module name for bare `import os`)
+	name string // module name ('' for quoted file imports: flat merge)
 	line int
 }
 

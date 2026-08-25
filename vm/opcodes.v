@@ -137,3 +137,6 @@ const native_split_lines = 161
 const native_pad = 162
 const native_pad_left = 163
 const native_repeat = 164
+const native_build_is_dir = 165
+const native_cwd = 166
+const native_json_pretty = 167

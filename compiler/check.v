@@ -46,7 +46,8 @@ mut:
 	enums   map[string][]string
 	consts  map[string]TypeInfo
 	loop_depth int
-	checked map[string]bool // imported files already checked
+	checked map[string]bool  // imported files already checked
+	modules map[string]bool  // imported module names (bare `import os`)
 }
 
 // check validates a parsed program and returns an error on the first problem.
@@ -76,7 +77,10 @@ fn check(prog Program) ! {
 	}
 	// imported files are checked (and their symbols merged) recursively
 	for imp in prog.imports {
-		c.check_import(imp.path)!
+		if imp.name.len > 0 {
+			c.modules[imp.name] = true
+		}
+		c.check_import(imp.path, imp.name)!
 	}
 	for fd in prog.fns {
 		c.check_fn(fd)!
@@ -93,7 +97,7 @@ fn def_count(fd FnDecl) int {
 	return n
 }
 
-fn (mut c Checker) check_import(path string) ! {
+fn (mut c Checker) check_import(path string, mod_name string) ! {
 	if path in c.checked {
 		return
 	}
@@ -101,7 +105,9 @@ fn (mut c Checker) check_import(path string) ! {
 	resolved := resolve_import(path) or { return error('cannot read import "${path}"') }
 	src := os.read_file(resolved) or { return error('cannot read import "${path}"') }
 	prog := parse(tokenize(src)!)!
-	// merge declarations from the import
+	// merge declarations from the import (bare modules register their
+	// functions under both the bare name and the "mod.fn" name, so internal
+	// calls check against the former and program calls against the latter)
 	for sd in prog.structs {
 		if sd.name !in c.structs {
 			c.structs[sd.name] = sd.fields
@@ -121,9 +127,15 @@ fn (mut c Checker) check_import(path string) ! {
 		if fd.name !in c.fns {
 			c.fns[fd.name] = FnSig{ min_args: fd.params.len - def_count(fd), has_defs: fd.has_defs, variadic: fd.variadic, n_type_params: fd.type_params.len }
 		}
+		if mod_name.len > 0 {
+			key := '${mod_name}.${fd.name}'
+			if key !in c.fns {
+				c.fns[key] = FnSig{ min_args: fd.params.len - def_count(fd), has_defs: fd.has_defs, variadic: fd.variadic, n_type_params: fd.type_params.len }
+			}
+		}
 	}
 	for imp in prog.imports {
-		c.check_import(imp.path)!
+		c.check_import(imp.path, imp.name)!
 	}
 	for fd in prog.fns {
 		c.check_fn(fd)!
@@ -324,16 +336,35 @@ fn (mut c Checker) check_expr(e Expr) !TypeInfo {
 			}
 			TypeInfo{ kind: .unknown }
 		}
-		.method_call {
-			recv := c.check_expr(*e.left)!
-			if recv.kind == .int_t || recv.kind == .float_t || recv.kind == .bool_t || recv.kind == .none_t {
-				return error('cannot call a method on a ${type_name(recv.kind)} (line ${e.line})')
-			}
+	.method_call {
+		// module call: os.exists(x) — the receiver is an imported module name
+		if e.left.kind == .ident && e.left.name in c.modules {
 			for a in e.args {
 				_ = c.check_expr(a)!
 			}
-			TypeInfo{ kind: .unknown }
+			key := '${e.left.name}.${e.name}'
+			if key in c.fns {
+				sig := c.fns[key]
+				if !sig.variadic {
+					if e.args.len < sig.min_args {
+						return error('${key}() expects at least ${sig.min_args} argument(s), got ${e.args.len} (line ${e.line})')
+					}
+					if e.args.len > sig.has_defs.len {
+						return error('${key}() expects at most ${sig.has_defs.len} argument(s), got ${e.args.len} (line ${e.line})')
+					}
+				}
+			}
+			return TypeInfo{ kind: .unknown }
 		}
+		recv := c.check_expr(*e.left)!
+		if recv.kind == .int_t || recv.kind == .float_t || recv.kind == .bool_t || recv.kind == .none_t {
+			return error('cannot call a method on a ${type_name(recv.kind)} (line ${e.line})')
+		}
+		for a in e.args {
+			_ = c.check_expr(a)!
+		}
+		TypeInfo{ kind: .unknown }
+	}
 		.slice {
 			base := c.check_expr(*e.left)!
 			_ = c.check_expr(*e.right)!
@@ -560,6 +591,8 @@ fn builtin_result_type(name string) TypeInfo {
 		// stdlib: JSON + string formatting
 		'json_encode', 'format', 'replace', 'pad', 'pad_left', 'repeat' { TypeInfo{ kind: .string_t } }
 		'json_decode', 'split_lines' { TypeInfo{ kind: .unknown } }
+		'cwd', 'json_pretty' { TypeInfo{ kind: .string_t } }
+		'build_is_dir' { TypeInfo{ kind: .int_t } }
 		// build-module builtins (.vrmm)
 		'build_compile', 'build_assemble', 'build_link', 'build_exec', 'build_base',
 		'build_dir', 'build_join', 'build_root' { TypeInfo{ kind: .string_t } }

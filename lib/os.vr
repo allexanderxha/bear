@@ -1,0 +1,75 @@
+// os.vr — operating system and filesystem helpers (part of the VuurRaaf stdlib).
+//
+//   import os
+//   if os.exists("build.vrmm") {
+//       for f in os.list_dir(".") {
+//           println(f)
+//       }
+//   }
+
+fn exists(path) {
+	return build_exists(path)
+}
+
+fn is_dir(path) {
+	return build_is_dir(path)
+}
+
+fn is_file(path) {
+	return build_exists(path) and not build_is_dir(path)
+}
+
+fn mkdir(path) {
+	build_mkdir(path)
+	return 0
+}
+
+fn remove(path) {
+	return build_rm(path)
+}
+
+fn copy(src, dst) {
+	build_copy(src, dst)
+	return 0
+}
+
+fn list_dir(path) {
+	return build_ls(path)
+}
+
+fn glob(pattern) {
+	return build_glob(pattern)
+}
+
+fn join(a, b) {
+	return build_join(a, b)
+}
+
+fn base(path) {
+	return build_base(path)
+}
+
+fn dir(path) {
+	return build_dir(path)
+}
+
+fn read_lines(path) {
+	return split_lines(read_file(path))
+}
+
+fn write_lines(path, lines) {
+	write_file(path, join(lines, "\n") + "\n")
+	return 0
+}
+
+fn cwd() {
+	return cwd()
+}
+
+fn env(name) {
+	return getenv(name)
+}
+
+fn exec(cmd) {
+	return build_exec(cmd)
+}

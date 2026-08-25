@@ -1,6 +1,11 @@
 // tests.vr — functions named test_* are picked up by `vr test`.
 //   vr test examples/tests.vr
 
+import os
+import json
+import strings
+import math
+
 fn add(a, b) {
 	return a + b
 }
@@ -292,6 +297,43 @@ fn test_none() {
 	assert not (none == 1)
 }
 
+fn test_module_imports() {
+	// os module
+	if not os.exists("examples") {
+		assert false
+	}
+	if not os.is_dir("examples") {
+		assert false
+	}
+	if not os.is_file("main.v") {
+		assert false
+	}
+	assert os.base("a/b/c.vr") == "c.vr"
+	assert os.dir("a/b/c.vr") == "a/b"
+	assert len(os.glob("lib/*.vr")) == 4
+	let tmp = os.join(os.cwd(), "tmp_test.txt")
+	os.write_lines(tmp, ["x", "y"])
+	assert len(os.read_lines(tmp)) == 2
+	os.remove(tmp)
+
+	// json module
+	let data = json.decode("{\"a\": 1, \"b\": [2, 3]}")
+	assert json.encode(data) == "{\"a\":1,\"b\":[2,3]}"
+	assert strings.contains(json.pretty(data), "\n")
+
+	// strings module
+	assert strings.join(["a", "b"], "-") == "a-b"
+	assert strings.capitalize("hello") == "Hello"
+	assert strings.replace("foo", "o", "0") == "f00"
+	assert strings.pad_left("7", 3) == "  7"
+	assert strings.format(3.14159, "%.2f") == "3.14"
+
+	// math module
+	assert math.clamp(150, 0, 100) == 100
+	assert math.sign(-3) == -1
+	assert math.abs(-7) == 7
+}
+
 fn test_native_errors_are_catchable() {
 	try {
 		read_file("/no/such/file.vr")
@@ -305,6 +347,38 @@ fn test_native_errors_are_catchable() {
 	} catch e {
 		assert len(e) > 0
 	}
+}
+
+fn test_closures() {
+	// closures in expression contexts must not corrupt surrounding values
+	let pick = fn (x) {
+		if x > 10 {
+			return "big"
+		}
+		return "small"
+	}
+	assert "a: " + pick(50) == "a: big"
+	assert pick(3) + "!" == "small!"
+	assert pick(50) + " " + pick(3) == "big small"
+	let dbl = fn (x) {
+		return x * 2
+	}
+	assert str(dbl(21)) == "42"
+	assert "v=" + str(dbl(4)) == "v=8"
+	// closure containing a loop
+	let sum = fn () {
+		let total = 0
+		for i in 0..5 {
+			total = total + i
+		}
+		return total
+	}
+	assert sum() == 10
+	// closure call as a statement argument
+	let tag = fn (t) {
+		return "[" + t + "]"
+	}
+	assert tag("warn") == "[warn]"
 }
 
 fn test_failing() {

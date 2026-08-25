@@ -239,20 +239,22 @@ fn (mut v Vm) exec() ! {
 			}
 			op_jmp {
 				v.ip++
-				v.ip = int(v.read_i64())
+				// jump targets are PC-relative (delta from the end of the
+				// operand), so merged/linked bytecode stays position-independent
+				v.ip += int(v.read_i64())
 			}
 			op_jz {
 				v.ip++
 				target := int(v.read_i64())
 				if !v.truthy(v.pop()!) {
-					v.ip = target
+					v.ip += target
 				}
 			}
 			op_jnz {
 				v.ip++
 				target := int(v.read_i64())
 				if v.truthy(v.pop()!) {
-					v.ip = target
+					v.ip += target
 				}
 			}
 			op_call {
@@ -499,7 +501,7 @@ fn (mut v Vm) exec() ! {
 			}
 			op_try {
 				v.ip++
-				catch_ip := int(v.read_i64())
+				catch_ip := int(v.read_i64()) + v.ip
 				v.handlers << Handler{ ip: catch_ip, bp: v.bp, sp: v.sp }
 			}
 			op_throw {
@@ -536,15 +538,15 @@ fn (mut v Vm) exec() ! {
 					return error('cannot call a non-function value')
 				}
 				entry := v.closures[v.hand(h)].entry
-				// Shift args left to overwrite the closure slot, then
-				// insert a return-value placeholder so the callee's
-				// retv never overwrites the caller's local that held
-				// the closure handle.
+				// Shift args left to overwrite the closure slot (and drop the
+				// duplicated tail), so the callee's retv lands exactly where the
+				// call sequence began and no stale value is left below the
+				// result. The caller's own local holding the closure sits below
+				// the pushed sequence and is never touched.
 				for i := 0; i < argc; i++ {
 					v.stack[v.sp - argc - 1 + i] = v.stack[v.sp - argc + i]
 				}
-				v.stack[v.sp - 1] = v.enc_int(0) // return-value placeholder
-				v.sp-- // closure was removed; unwind one slot
+				v.sp-- // drop the duplicated arg tail; closure slot was consumed
 				v.call(entry, argc)
 			}
 			op_argc {

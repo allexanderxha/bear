@@ -2,7 +2,7 @@
 //
 // Grammar (informal):
 //   program  := import* (struct | enum | const | fn)*
-//   import   := 'import' STRING
+//   import   := 'import' STRING | 'import' IDENT
 //   struct   := 'struct' IDENT '{' [IDENT (',' IDENT)*] '}'
 //   enum     := 'enum' IDENT '{' [IDENT (',' IDENT)*] '}'
 //   const    := 'const' IDENT '=' expr
@@ -123,11 +123,16 @@ fn (mut p Parser) parse_struct_decl() !StructDecl {
 	return StructDecl{ name: name.lit, fields: fields, line: t.line }
 }
 
-// parse_import parses `import "path/to/file.vr"`.
+// parse_import parses `import "path/to/file.vr"` (flat file merge) or a
+// bare module name like `import os` (namespaced stdlib/vendor module).
 fn (mut p Parser) parse_import() !ImportDecl {
 	t := p.expect(.kw_import, "'import'")!
-	path := p.expect(.str_lit, 'import path')!
-	return ImportDecl{ path: path.lit, line: t.line }
+	if p.cur().kind == .str_lit {
+		path := p.advance().lit
+		return ImportDecl{ path: path, line: t.line }
+	}
+	name := p.expect(.ident, 'module name')!.lit
+	return ImportDecl{ name: name, path: name, line: t.line }
 }
 
 // parse_enum_decl parses `enum Name { variant1 variant2 ... }`.

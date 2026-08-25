@@ -513,6 +513,10 @@ fn (mut v Vm) native(id int, _argc int) ! {
 			p := v.pop_str()!
 			v.push(v.enc_int(bool_i64(os.exists(p))))!
 		}
+		native_build_is_dir {
+			p := v.pop_str()!
+			v.push(v.enc_int(bool_i64(os.is_dir(p))))!
+		}
 		native_build_mkdir {
 			p := v.pop_str()!
 			os.mkdir_all(p) or { return error('build_mkdir: cannot create ${p}: ${err.msg()}') }
@@ -634,6 +638,14 @@ fn (mut v Vm) native(id int, _argc int) ! {
 				return error('repeat() expects a non-negative count')
 			}
 			v.push(v.alloc_str(s.repeat(n)))!
+		}
+		native_cwd {
+			v.push(v.alloc_str(os.getwd()))!
+		}
+		native_json_pretty {
+			x := v.pop()!
+			s := v.json_pretty_value(x, 0) or { return error('json_pretty: ${err.msg()}') }
+			v.push(v.alloc_str(s))!
 		}
 		else {
 			return error('unknown native builtin ${id}')

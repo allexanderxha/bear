@@ -421,6 +421,52 @@ fn (mut v Vm) json_encode_value(x i64, depth int) !string {
 	return v.dec_int(x).str()
 }
 
+// json_pretty_value renders a value as indented, multi-line JSON (the
+// `json_pretty` builtin used by the json stdlib module).
+fn (mut v Vm) json_pretty_value(x i64, depth int) !string {
+	ind := '  '.repeat(depth)
+	ind1 := '  '.repeat(depth + 1)
+	if v.is_none(x) {
+		return 'null'
+	}
+	if v.is_str(x) && v.valid_handle(x) {
+		return json_quote(v.strings[v.hand(x)])
+	}
+	if v.is_arr(x) && v.valid_arr_handle(x) {
+		a := v.arrays[v.hand(x)]
+		if a.len == 0 {
+			return '[]'
+		}
+		mut parts := []string{}
+		for el in a {
+			parts << ind1 + v.json_pretty_value(el, depth + 1)!
+		}
+		return '[\n' + parts.join(',\n') + '\n' + ind + ']'
+	}
+	if v.is_struct(x) && v.valid_struct_handle(x) {
+		s := v.structs[v.hand(x)]
+		if s.fields.len == 0 {
+			return '{}'
+		}
+		mut parts := []string{}
+		for f in s.fields {
+			parts << ind1 + json_quote(f.name) + ': ' + v.json_pretty_value(f.val, depth + 1)!
+		}
+		return '{\n' + parts.join(',\n') + '\n' + ind + '}'
+	}
+	if v.is_float(x) && v.valid_float_handle(x) {
+		f := v.fval(x)
+		if math.is_nan(f) || math.is_inf(f, 1) || math.is_inf(f, -1) {
+			return error('cannot encode NaN or Infinity as JSON')
+		}
+		return fmt_float(f)
+	}
+	if v.is_closure(x) && v.valid_closure_handle(x) {
+		return error('cannot encode a function value as JSON')
+	}
+	return v.dec_int(x).str()
+}
+
 // json_quote escapes a string into a JSON string literal. UTF-8 bytes pass
 // through untouched; control characters become \\u00XX escapes.
 fn json_quote(s string) string {

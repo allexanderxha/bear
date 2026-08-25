@@ -43,6 +43,7 @@ mut:
 	loops     []LoopCtx
 	enter_off u32
 	next_lbl  int
+	modules   map[string]bool // imported module names (bare `import os`)
 }
 
 fn gen(prog Program) !obj.Obj {
@@ -78,22 +79,41 @@ fn gen(prog Program) !obj.Obj {
 		}
 		g.structs[sd.name] = sd.fields
 	}
-	// compile imported files and merge their objects
+	// compile imported files and merge their objects. Bare module imports
+	// (`import os`) prefix the module's function symbols and internal call
+	// relocations with "os.", so programs call os.exists(...) and modules can
+	// never collide with each other or with the program's own functions.
 	for imp in prog.imports {
+		mod_name := imp.name
+		prefix := if mod_name.len > 0 { mod_name + '.' } else { '' }
 		imported := compile_file(resolve_import(imp.path)!)!
-		// merge symbols from the imported object
+		if mod_name.len > 0 {
+			g.modules[mod_name] = true
+		}
+		// the imported object's own symbol names (for rewriting call sites)
+		mut own := map[string]bool{}
 		for s in imported.symbols {
-			g.symbols << s
+			own[s.name] = true
+		}
+		// append imported bytecode first so symbol entries can be rebased
+		code_off := g.code.len
+		g.code << imported.code
+		// merge symbols from the imported object (prefixed and rebased: entries
+		// are relative to the imported code, which now sits at code_off)
+		for s in imported.symbols {
+			g.symbols << obj.Symbol{ name: prefix + s.name, entry: code_off + s.entry }
 		}
 		// merge strings
 		for s in imported.strings {
 			g.strings << s
 		}
-		// append imported bytecode and adjust relocations
-		code_off := g.code.len
-		g.code << imported.code
+		// adjust relocations (and prefix module-internal call targets)
 		for r in imported.relocs {
-			g.relocs << obj.Reloc{ offset: u32(code_off) + r.offset, name: r.name, kind: r.kind }
+			mut rname := r.name
+			if r.kind == 0 && prefix.len > 0 && r.name in own {
+				rname = prefix + r.name
+			}
+			g.relocs << obj.Reloc{ offset: u32(code_off) + r.offset, name: rname, kind: r.kind }
 		}
 		// merge debug info, rebasing offsets into this object's code space
 		for l in imported.lines {
@@ -190,12 +210,14 @@ fn (mut g Gen) gen_fn(fd FnDecl) ! {
 	// than declared (default parameters) or more (variadic), so the frame must
 	// always cover slots 0..local_cnt-1
 	obj.patch_i64(mut g.code, g.enter_off, i64(g.local_cnt))
-	// resolve intra-function jump targets
+	// resolve intra-function jump targets. Targets are encoded PC-relative
+	// (delta from the end of the 8-byte operand), so bytecode stays
+	// position-independent when module objects are merged or linked.
 	for f in g.fixups {
 		target := g.labels[f.name] or {
 			return error('internal error: unresolved label ${f.name} in fn ${fd.name}')
 		}
-		obj.patch_i64(mut g.code, f.off, i64(target))
+		obj.patch_i64(mut g.code, f.off, i64(target - (int(f.off) + 8)))
 	}
 	g.fixups.clear()
 	g.labels.clear()
@@ -603,13 +625,24 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.emit_field_name(e.name)
 			g.code << op_sget
 		}
-		.method_call {
-			// p.dist(x)  →  call <Type>.dist  p, x
-			recv_t := g.method_receiver_type(e)
-			// string methods: s.len(), s.to_upper(), s.contains(x), ... —
-			// the receiver type is known when it is a literal or a local that
-			// was assigned a string literal
-			if recv_t == 'string' || e.left.kind == .str_lit {
+	.method_call {
+		// module call: os.exists(x) — the receiver is an imported module name
+		if e.left.kind == .ident && e.left.name in g.modules {
+			for a in e.args {
+				g.gen_expr(a)!
+			}
+			g.code << op_call
+			g.code << obj.encode_i64(0) // placeholder — patched by the linker
+			g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: '${e.left.name}.${e.name}', kind: 0 }
+			g.code << obj.encode_i64(i64(e.args.len))
+			return
+		}
+		// p.dist(x)  →  call <Type>.dist  p, x
+		recv_t := g.method_receiver_type(e)
+		// string methods: s.len(), s.to_upper(), s.contains(x), ... —
+		// the receiver type is known when it is a literal or a local that
+		// was assigned a string literal
+		if recv_t == 'string' || e.left.kind == .str_lit {
 				g.gen_expr(*e.left)!
 				for a in e.args {
 					g.gen_expr(a)!
@@ -713,8 +746,9 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.local_cnt = saved_local_cnt
 			g.enter_off = saved_enter_off
 			g.argc = saved_argc
-			// Patch the skip jump to land at the closure opcode we emit next.
-			obj.patch_i64(mut g.code, skip_fix_off, i64(g.code.len))
+			// Patch the skip jump to land at the closure opcode we emit next
+			// (PC-relative, like all other jump targets).
+			obj.patch_i64(mut g.code, skip_fix_off, i64(g.code.len - (int(skip_fix_off) + 8)))
 			g.code << op_closure
 			g.code << obj.encode_i64(0)
 			g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: name, kind: 0 }
@@ -830,10 +864,12 @@ fn (mut g Gen) gen_call(e Expr) ! {
 		g.code << op_skeys
 		return
 	}
-	// closure call: ident(args) where ident is a local holding a closure
+	// closure call: ident(args) where ident is a local holding a closure.
+	// The local's value is pushed as the call sequence's first slot;
+	// op_call_closure consumes it along with the args, leaving only the
+	// result on the stack.
 	if e.name in g.locals {
 		g.gen_expr(Expr{ kind: .ident, name: e.name, line: e.line })!
-		g.code << op_dup  // separate the closure copy from the local slot
 		for a in e.args {
 			g.gen_expr(a)!
 		}
@@ -935,6 +971,9 @@ fn builtin_spec(name string) (int, int) {
 		'pad' { native_pad, 2 }
 		'pad_left' { native_pad_left, 2 }
 		'repeat' { native_repeat, 2 }
+		'build_is_dir' { native_build_is_dir, 1 }
+		'cwd' { native_cwd, 0 }
+		'json_pretty' { native_json_pretty, 1 }
 		else { -1, 0 }
 	}
 }
@@ -1166,6 +1205,7 @@ fn (mut g Gen) expr_type(e Expr) string {
 			'build_compile', 'build_assemble', 'build_link', 'build_exec', 'build_base',
 			'build_dir', 'build_join', 'build_root' { 'string' }
 			'json_encode', 'format', 'replace', 'pad', 'pad_left', 'repeat' { 'string' }
+			'cwd', 'json_pretty' { 'string' }
 			else { '' }
 		}
 	}
