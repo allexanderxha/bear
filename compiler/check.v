@@ -44,6 +44,7 @@ mut:
 	mutable   map[string]bool     // local names bound with `mut`, params, loop vars; only these may be reassigned
 	fns       map[string]FnSig
 	structs   map[string][]string
+	struct_types map[string]map[string]string // struct name -> field -> declared type ('' = any)
 	enums     map[string][]string
 	consts    map[string]TypeInfo
 	loop_depth int
@@ -60,6 +61,7 @@ fn check(prog Program) ! {
 			return error('duplicate struct declaration "${sd.name}" (line ${sd.line})')
 		}
 		c.structs[sd.name] = sd.fields
+		c.struct_types[sd.name] = field_type_map(sd)
 	}
 	for ed in prog.enums {
 		if ed.name in c.enums {
@@ -76,12 +78,18 @@ fn check(prog Program) ! {
 		}
 		c.fns[fd.name] = FnSig{ min_args: fd.params.len - def_count(fd), has_defs: fd.has_defs, variadic: fd.variadic, n_type_params: fd.type_params.len }
 	}
-	// imported files are checked (and their symbols merged) recursively
+	// imported files are checked (and their symbols merged) recursively;
+	// recursion runs first so a struct's field types may reference types
+	// declared in transitive imports
 	for imp in prog.imports {
 		if imp.name.len > 0 {
 			c.modules[imp.name] = true
 		}
 		c.check_import(imp.path, imp.name)!
+	}
+	// all declarations are visible now — validate declared field types
+	for sd in prog.structs {
+		c.validate_struct(sd)!
 	}
 	for fd in prog.fns {
 		c.check_fn(fd)!
@@ -98,6 +106,94 @@ fn def_count(fd FnDecl) int {
 	return n
 }
 
+// field_type_map turns a StructDecl's parallel fields/field_types arrays into
+// a lookup map (missing entries default to '' = dynamically typed).
+fn field_type_map(sd StructDecl) map[string]string {
+	mut m := map[string]string{}
+	for i, fname in sd.fields {
+		m[fname] = if i < sd.field_types.len { sd.field_types[i] } else { '' }
+	}
+	return m
+}
+
+const builtin_type_names = ['int', 'float', 'string', 'bool', 'array']
+
+// validate_struct checks a struct declaration's own well-formedness: no
+// duplicate fields and every declared type names a builtin or a known
+// struct/enum.
+fn (mut c Checker) validate_struct(sd StructDecl) ! {
+	mut seen := map[string]bool{}
+	for i, fname in sd.fields {
+		if fname in seen {
+			return error('duplicate field "${fname}" in struct ${sd.name} (line ${sd.line})')
+		}
+		seen[fname] = true
+		decl := if i < sd.field_types.len { sd.field_types[i] } else { '' }
+		if decl.len == 0 {
+			continue
+		}
+		base := decl.trim_left('?')
+		if base in builtin_type_names {
+			continue
+		}
+		if base in c.structs || base in c.enums {
+			continue
+		}
+		return error('unknown type "${base}" for field "${fname}" of struct ${sd.name} (line ${sd.line})')
+	}
+}
+
+// field_accepts reports whether a value of checker type t may be stored in a
+// field declared as decl ('' = any). Ints widen to floats; unknown stays
+// dynamic. A '?'-prefixed declaration additionally accepts none.
+fn (mut c Checker) field_accepts(decl string, t TypeInfo) bool {
+	if t.kind == .unknown || decl.len == 0 {
+		return true
+	}
+	if t.kind == .none_t {
+		return decl.starts_with('?')
+	}
+	base := decl.trim_left('?')
+	return match base {
+		'int' { t.kind == .int_t }
+		'float' { t.kind == .float_t || t.kind == .int_t }
+		'string' { t.kind == .string_t }
+		'bool' { t.kind == .bool_t }
+		'array' { t.kind == .array_t }
+		else {
+			if base in c.structs {
+				t.kind == .struct_t && t.name == base
+			} else if base in c.enums {
+				t.kind == .enum_t && t.name == base
+			} else {
+				true // unresolved name (separate compilation) — stay conservative
+			}
+		}
+	}
+}
+
+// declared_type maps a declared field type to the checker TypeInfo that reads
+// of that field produce.
+fn (mut c Checker) declared_type(decl string) TypeInfo {
+	base := decl.trim_left('?')
+	return match base {
+		'int' { TypeInfo{ kind: .int_t } }
+		'float' { TypeInfo{ kind: .float_t } }
+		'string' { TypeInfo{ kind: .string_t } }
+		'bool' { TypeInfo{ kind: .bool_t } }
+		'array' { TypeInfo{ kind: .array_t } }
+		else {
+			if base in c.enums {
+				TypeInfo{ kind: .enum_t, name: base }
+			} else if base in c.structs {
+				TypeInfo{ kind: .struct_t, name: base }
+			} else {
+				TypeInfo{ kind: .unknown }
+			}
+		}
+	}
+}
+
 fn (mut c Checker) check_import(path string, mod_name string) ! {
 	if path in c.checked {
 		return
@@ -106,12 +202,18 @@ fn (mut c Checker) check_import(path string, mod_name string) ! {
 	resolved := resolve_import(path) or { return error('cannot read import "${path}"') }
 	src := os.read_file(resolved) or { return error('cannot read import "${path}"') }
 	prog := parse(tokenize(src)!)!
+	// recurse into the file's own imports before merging, so every type it
+	// references is registered by the time field declarations are validated
+	for imp in prog.imports {
+		c.check_import(imp.path, imp.name)!
+	}
 	// merge declarations from the import (bare modules register their
 	// functions under both the bare name and the "mod.fn" name, so internal
 	// calls check against the former and program calls against the latter)
 	for sd in prog.structs {
 		if sd.name !in c.structs {
 			c.structs[sd.name] = sd.fields
+			c.struct_types[sd.name] = field_type_map(sd)
 		}
 	}
 	for ed in prog.enums {
@@ -135,8 +237,9 @@ fn (mut c Checker) check_import(path string, mod_name string) ! {
 			}
 		}
 	}
-	for imp in prog.imports {
-		c.check_import(imp.path, imp.name)!
+	// every declaration of this file (and its imports) is merged now
+	for sd in prog.structs {
+		c.validate_struct(sd)!
 	}
 	for fd in prog.fns {
 		c.check_fn(fd)!
@@ -193,11 +296,22 @@ fn (mut c Checker) check_stmt(st Stmt) ! {
 			_ = c.check_expr(st.idx)!
 			c.expect_container(base, 'index assignment', st.line)!
 			_ = c.check_expr(st.expr)!
-		}
-		.field_assign {
+		}		.field_assign {
 			base := c.check_expr(st.base)!
 			c.expect_struct_like(base, 'field assignment', st.line)!
-			_ = c.check_expr(st.expr)!
+			vt := c.check_expr(st.expr)!
+			// a known declared struct validates both field existence and type;
+			// anonymous structs stay dynamic (assigning adds fields)
+			if base.kind == .struct_t && base.name.len > 0 && base.name in c.structs {
+				fields := c.structs[base.name]
+				if st.target !in fields {
+					return error('unknown field "${st.target}" for struct ${base.name} (line ${st.line})')
+				}
+				decl := c.struct_types[base.name][st.target]
+				if !c.field_accepts(decl, vt) {
+					return error('cannot assign a ${type_name(vt.kind)} to field "${st.target}" (${decl}) of struct ${base.name} (line ${st.line})')
+				}
+			}
 		}
 		.if_stmt {
 			_ = c.check_expr(st.cond)!
@@ -338,7 +452,11 @@ fn (mut c Checker) check_expr(e Expr) !TypeInfo {
 						return error('duplicate field "${f.name}" in struct literal (line ${e.line})')
 					}
 					seen[f.name] = true
-					_ = c.check_expr(f.val)!
+					vt := c.check_expr(f.val)!
+					decl := c.struct_types[e.name][f.name]
+					if !c.field_accepts(decl, vt) {
+						return error('cannot assign a ${type_name(vt.kind)} to field "${f.name}" (${decl}) of struct ${e.name} (line ${e.line})')
+					}
 				}
 				return TypeInfo{ kind: .struct_t, name: e.name }
 			}
@@ -364,6 +482,18 @@ fn (mut c Checker) check_expr(e Expr) !TypeInfo {
 			// enum variant on an enum-typed receiver: Color.red  →  enum_t
 			if base.kind == .enum_t {
 				return TypeInfo{ kind: .enum_t, name: base.name }
+			}
+			// a known declared struct validates the field name and yields its
+			// declared type, so chained reads keep their types
+			if base.kind == .struct_t && base.name.len > 0 && base.name in c.structs {
+				fields := c.structs[base.name]
+				if e.name !in fields {
+					return error('unknown field "${e.name}" for struct ${base.name} (line ${e.line})')
+				}
+				decl := c.struct_types[base.name][e.name]
+				if decl.len > 0 {
+					return c.declared_type(decl)
+				}
 			}
 			TypeInfo{ kind: .unknown }
 		}

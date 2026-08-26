@@ -100,12 +100,16 @@ pub mut:
 	line      int
 }
 
-// StructDecl is a `struct Name { a, b }` declaration.
+// StructDecl is a `struct Name { a int, b }` declaration.
+// field_types is parallel to fields; an empty string means the field is
+// dynamically typed (any value), while a declared type is enforced by the
+// checker. A leading `?` marks the field as also accepting `none`.
 pub struct StructDecl {
 pub mut:
-	name   string
-	fields []string
-	line   int
+	name        string
+	fields      []string
+	field_types []string
+	line        int
 }
 
 pub struct FnDecl {

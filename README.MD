@@ -401,6 +401,13 @@ fn main() {
   field access `a.b` and assignment `a.b = v` (chained: `a[i].b`, `a.b[i]`);
   structs are mutable references (identity `==`/`!=`), and setting a missing
   field adds it, so records can be built incrementally
+- declared struct field types:
+  `struct Point { x int, y int, tag ?string, next Point }` — fields may declare
+  a type (`int`, `float`, `string`, `bool`, `array`, another struct, or an
+  enum); a leading `?` also accepts `none`. The checker validates struct
+  literals and field reads/writes against the declaration: unknown fields and
+  mistyped values are compile-time errors. Untyped fields stay fully dynamic,
+  and ints widen to `float` fields
 - enums: `enum Color { red green blue }` with `Color.red`, `e.to_string()`,
   `e.count()`, and iteration in `for`
 - constants: `const NAME = 42` (compile-time integer/bool values)

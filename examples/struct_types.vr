@@ -1,0 +1,61 @@
+// struct_types.vr — declared struct field types, validated by the checker.
+//
+// vr run examples/struct_types.vr
+// vr test examples/struct_types.vr
+
+struct Point {
+	x int
+	y int
+}
+
+struct Named {
+	name string
+	tag ?string
+	origin Point
+}
+
+enum Color { red green blue }
+
+struct Painted {
+	c Color
+}
+
+struct Wrapper {
+	pt Point
+	items array
+	ratio float
+	ok bool
+}
+
+fn test_typed_struct_basics() {
+	let p = Point{ x: 3, y: 4 }
+	assert p.x == 3
+	assert p.y == 4
+	mut q = Point{ x: 1, y: 2 }
+	q.x = 10
+	assert q.x + q.y == 12
+}
+
+fn test_optional_and_nested() {
+	let a = Named{ name: "amy", tag: "admin", origin: Point{ x: 1, y: 2 } }
+	assert a.name == "amy"
+	assert a.tag == "admin"
+	assert a.origin.x == 1
+	let b = Named{ name: "bo", tag: none, origin: Point{ x: 0, y: 0 } }
+	assert b.tag == none
+	// ints widen to float fields
+	let w = Wrapper{ pt: Point{ x: 5, y: 6 }, items: [1, 2], ratio: 2, ok: true }
+	assert w.ratio == 2.0 and w.pt.y == 6
+}
+
+fn test_enum_field() {
+	let p = Painted{ c: Color.green }
+	assert p.c == Color.green
+}
+
+fn main() {
+	let p = Point{ x: 3, y: 4 }
+	println(p.x + p.y)
+	let n = Named{ name: "vuurraaf", tag: none, origin: p }
+	println(n.name + " y=" + n.origin.y)
+}

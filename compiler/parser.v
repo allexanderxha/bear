@@ -3,7 +3,7 @@
 // Grammar (informal):
 //   program  := import* (struct | enum | const | fn)*
 //   import   := 'import' STRING | 'import' IDENT
-//   struct   := 'struct' IDENT '{' [IDENT (',' IDENT)*] '}'
+//   struct   := 'struct' IDENT '{' [field (',' field)*] '}'   (field := IDENT [Type] | IDENT '?' Type)
 //   enum     := 'enum' IDENT '{' [IDENT (',' IDENT)*] '}'
 //   const    := 'const' IDENT '=' expr
 //   fn       := 'fn' [ '(' IDENT IDENT ')' ] IDENT '(' [IDENT (',' IDENT)*] ')' block
@@ -103,24 +103,40 @@ fn (mut p Parser) parse_program() !Program {
 	return prog
 }
 
-// parse_struct_decl parses `struct Name { a, b, c }`.
+// parse_struct_decl parses `struct Name { x int, y int, tag ?string, w }`.
+// Each field is `name` (dynamically typed) or `name Type`; a leading `?` on
+// the type marks it optional (also accepting `none`). Fields may be separated
+// by commas or newlines.
 fn (mut p Parser) parse_struct_decl() !StructDecl {
 	t := p.expect(.kw_struct, "'struct'")!
 	name := p.expect(.ident, 'struct name')!
 	p.expect(.lbrace, "'{'")!
 	mut fields := []string{}
+	mut field_types := []string{}
 	if p.cur().kind != .rbrace {
 		for {
 			fields << p.expect(.ident, 'field name')!.lit
+			if p.cur().kind == .question {
+				p.advance()
+				field_types << '?' + p.expect(.ident, 'type name')!.lit
+			} else if p.cur().kind == .ident {
+				field_types << p.advance().lit
+			} else {
+				field_types << ''
+			}
 			if p.cur().kind == .comma {
 				p.advance()
+				continue
+			}
+			if p.cur().kind != .rbrace {
+				// newline-separated field
 				continue
 			}
 			break
 		}
 	}
 	p.expect(.rbrace, "'}'")!
-	return StructDecl{ name: name.lit, fields: fields, line: t.line }
+	return StructDecl{ name: name.lit, fields: fields, field_types: field_types, line: t.line }
 }
 
 // parse_import parses `import "path/to/file.vr"` (flat file merge) or a

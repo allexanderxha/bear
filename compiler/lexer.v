@@ -121,6 +121,10 @@ fn (mut l Lexer) next() !Tok {
 			l.advance()
 			return Tok{ kind: .colon, lit: ':', line: line, col: col }
 		}
+		`?` {
+			l.advance()
+			return Tok{ kind: .question, lit: '?', line: line, col: col }
+		}
 		`+` {
 			l.advance()
 			if l.peek() == `=` {

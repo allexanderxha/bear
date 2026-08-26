@@ -17,6 +17,7 @@ pub enum TokKind {
 	comma
 	dot
 	colon
+	question
 	plus
 	minus
 	star
