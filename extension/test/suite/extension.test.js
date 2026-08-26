@@ -12,6 +12,9 @@ const vscode = require('vscode');
 const DEMO_URI = vscode.Uri.file(
 	path.join(__dirname, '..', 'fixtures', 'workspace', 'demo.vr')
 );
+const VASM_URI = vscode.Uri.file(
+	path.join(__dirname, '..', 'fixtures', 'workspace', 'math.vasm')
+);
 
 async function openDemo() {
 	const doc = await vscode.workspace.openTextDocument(DEMO_URI);
@@ -37,6 +40,13 @@ suite('VuurRaaf extension', function () {
 	test('vuurraaf language (grammar) is registered', async function () {
 		const langs = await vscode.languages.getLanguages();
 		assert.ok(langs.includes('vuurraaf'), 'vuurraaf language id not registered');
+		assert.ok(langs.includes('vuurraaf-asm'), 'vuurraaf-asm language id not registered');
+	});
+
+	test('.vasm files get the vuurraaf-asm language id', async function () {
+		const doc = await vscode.workspace.openTextDocument(VASM_URI);
+		await vscode.window.showTextDocument(doc);
+		assert.strictEqual(doc.languageId, 'vuurraaf-asm', 'expected vuurraaf-asm, got ' + doc.languageId);
 	});
 
 	test('language server publishes compiler diagnostics', async function () {

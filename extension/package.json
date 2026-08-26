@@ -13,7 +13,8 @@
 		"Linters"
 	],
 	"activationEvents": [
-		"onLanguage:vuurraaf"
+		"onLanguage:vuurraaf",
+		"onLanguage:vuurraaf-asm"
 	],
 	"main": "./client/extension.js",
 	"contributes": {
@@ -29,6 +30,17 @@
 					".vrmm"
 				],
 				"configuration": "./language-configuration.json"
+			},
+			{
+				"id": "vuurraaf-asm",
+				"aliases": [
+					"VuurRaaf Assembly",
+					"vasm"
+				],
+				"extensions": [
+					".vasm"
+				],
+				"configuration": "./language-configuration-vasm.json"
 			}
 		],
 		"grammars": [
@@ -36,6 +48,11 @@
 				"language": "vuurraaf",
 				"scopeName": "source.vuurraaf",
 				"path": "./syntaxes/vuurraaf.tmLanguage.json"
+			},
+			{
+				"language": "vuurraaf-asm",
+				"scopeName": "source.vuurraaf-asm",
+				"path": "./syntaxes/vuurraaf-asm.tmLanguage.json"
 			}
 		],
 		"configuration": {

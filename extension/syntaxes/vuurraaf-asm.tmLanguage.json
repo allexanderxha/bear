@@ -1,0 +1,98 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "VuurRaaf Assembly",
+	"scopeName": "source.vuurraaf-asm",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#directives"
+		},
+		{
+			"include": "#labels"
+		},
+		{
+			"include": "#mnemonics"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#operands"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.semicolon.vuurraaf-asm",
+					"match": ";.*$"
+				}
+			]
+		},
+		"directives": {
+			"patterns": [
+				{
+					"name": "keyword.other.directive.vuurraaf-asm",
+					"match": "^\\s*(\\.[a-zA-Z_][a-zA-Z0-9_]*)\\b"
+				}
+			]
+		},
+		"labels": {
+			"patterns": [
+				{
+					"name": "meta.label.vuurraaf-asm",
+					"match": "^\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*:\\s*$",
+					"captures": {
+						"1": {
+							"name": "entity.name.function.vuurraaf-asm"
+						}
+					}
+				}
+			]
+		},
+		"mnemonics": {
+			"patterns": [
+				{
+					"name": "keyword.control.vuurraaf-asm",
+					"match": "\\b(halt|push_int|push_str|load|store|pop|dup|add|sub|mul|div|mod|neg|eq|ne|lt|le|gt|ge|and|or|not|jmp|jz|jnz|call|ret|retv|print|println|assert|enter|mkarray|aget|aset|alen|apush|mkstruct|sget|sset)\\b"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"name": "string.quoted.double.vuurraaf-asm",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.vuurraaf-asm",
+							"match": "\\\\\\(\\\\|n|t|r|\"|$)"
+						}
+					]
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.vuurraaf-asm",
+					"match": "-?\\b\\d+\\b"
+				}
+			]
+		},
+		"operands": {
+			"patterns": [
+				{
+					"name": "variable.other.reference.vuurraaf-asm",
+					"match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+				}
+			]
+		}
+	}
+}

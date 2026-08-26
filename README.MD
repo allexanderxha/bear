@@ -487,8 +487,10 @@ contents (arrays rendered as `[1, 2, ...]`).
 (functions, structs, enums, constants, locals, and stdlib module functions),
 and hover (symbol kind + line). The `extension/` folder contains a VS Code
 client (`code --install-extension extension/` after `npm install` in
-`extension/`) with syntax highlighting, or point any other LSP client at
-`vr lsp`.
+`extension/`) with syntax highlighting for `.vr` / `.vrmm` source and
+`.vasm` assembly (labels, `.global` directives, and mnemonics; the
+assembly language gets highlighting only — no language server), or point
+any other LSP client at `vr lsp`.
 
 ## Releases
 

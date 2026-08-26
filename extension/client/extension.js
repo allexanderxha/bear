@@ -2,6 +2,8 @@
 //
 // Spawns `vr lsp` (the toolchain's built-in language server) and wires up
 // diagnostics, go-to-definition, and hover for .vr / .vrmm files.
+// .vasm files get their own language (vuurraaf-asm) with dedicated syntax
+// highlighting but no language server, since the server compiles .vr source.
 // The toolchain binary defaults to `vr` on PATH; override it with the
 // `vuurraaf.toolchainPath` setting.
 
