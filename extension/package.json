@@ -2,7 +2,7 @@
 	"name": "vuurraaf",
 	"displayName": "VuurRaaf",
 	"description": "Language support for VuurRaaf: syntax highlighting, diagnostics, and go-to-definition via the vr language server.",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"publisher": "vuurraaf",
 	"license": "MIT",
 	"engines": {
