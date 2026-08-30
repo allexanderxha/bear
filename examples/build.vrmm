@@ -1,0 +1,57 @@
+#!/usr/bin/env vr
+// build.vrmm — a VuurRaaf Make Module: build instructions for the toolchain,
+// written in VuurRaaf itself (like V's .vsh, but for this language).
+//
+//   ./examples/build.vrmm                         run directly (after chmod +x)
+//   ./bin/vr make -f examples/build.vrmm          build + run hello
+//   ./bin/vr make -f examples/build.vrmm multi    compile/link/run a 2-file program
+//   ./bin/vr make -f examples/build.vrmm test     run tests.vr
+//   ./bin/vr make -f examples/build.vrmm clean    remove artifacts
+//   ./bin/vr make -f examples/build.vrmm deploy --prod    deploy() with args()
+//
+// Paths are relative to the working directory; build_root() returns this
+// module's own directory for scripts that want absolute paths.
+
+fn main() {
+	// compile + link + run in one step
+	build_run("examples/hello.vr")
+}
+
+fn multi() {
+	// drive each toolchain stage explicitly
+	let root = build_root()
+	let lib = build_compile(build_join(root, "lib.vr"), build_join(root, "lib.vobj"))
+	let use = build_compile(build_join(root, "use_lib.vr"), build_join(root, "use_lib.vobj"))
+	let bin = build_link([lib, use], build_join(root, "use_lib.vbin"))
+	build_run(bin)
+}
+
+fn test() {
+	// run every test_* function; fails the build if any test fails
+	build_test("examples/tests.vr")
+}
+
+fn bench() {
+	// benchmark main() of fib.vr 2000 times
+	build_bench("examples/fib.vr", 2000)
+}
+
+fn deploy() {
+	// arguments after the target arrive via args()
+	let args = args()
+	if len(args) == 0 {
+		throw "deploy needs a flag: vr make deploy --prod"
+	}
+	println("deploying with args: " + join(args, " "))
+	let out = build_exec("echo 'deploy step ok'")
+	println(out)
+}
+
+fn clean() {
+	// remove this module's artifacts (build_rm returns 1 if it removed something)
+	let root = build_root()
+	for f in ["lib.vobj", "lib.vbin", "use_lib.vobj", "use_lib.vbin", "hello.vbin"] {
+		build_rm(build_join(root, f))
+	}
+	println("cleaned")
+}

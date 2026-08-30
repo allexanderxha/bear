@@ -1,0 +1,33 @@
+// string interpolation: embed expressions inside "..." with ${}
+
+fn main() {
+    let name = "alice"
+    let age = 30
+    
+    // simple variable interpolation
+    println("hello ${name}!")
+    
+    // multiple interpolations
+    println("${name} is ${age} years old")
+    
+    // expression inside interpolation
+    println("${name} will be ${age + 1} next year")
+    
+    // interpolation with function calls
+    let nums = [10, 20, 30]
+    println("first element: ${nums[0]}")
+    
+    // string concatenation with interpolation
+    let greeting = "hi"
+    println("${greeting}, ${name}! age=${age}")
+    
+    // no interpolation (regular string)
+    println("no interpolation here")
+    
+    // empty interpolation adjacent to text
+    let x = 42
+    println("value is ${x}")
+    
+    // arithmetic in interpolation
+    println("double age: ${age * 2}")
+}

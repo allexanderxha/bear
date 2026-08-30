@@ -1,0 +1,29 @@
+// time.vr — date/time helpers.
+//   vr run examples/time.vr
+//
+// Tokens follow the Moment.js style: YYYY, MM, DD, HH, mm, ss, with
+// literals like "-" and ":". All values are Unix epoch seconds.
+
+import time
+
+fn main() {
+	let now = time.now()
+	println("epoch seconds: " + str(now))
+	println("date:          " + time.date(now))
+	println("clock:         " + time.clock(now))
+	println("full:          " + time.format(now, "YYYY-MM-DD HH:mm:ss"))
+	println("custom:        " + time.format(now, "MM/DD/YYYY"))
+
+	// parse a timestamp back to epoch seconds
+	let parsed = time.parse("2026-08-25 12:00:00")
+	println("parsed epoch:  " + str(parsed))
+
+	// milliseconds for timing
+	let start = time.ms()
+	mut x = 0
+	for i in 0..100000 {
+		x = x + i
+	}
+	let elapsed = time.ms() - start
+	println("loop took " + str(elapsed) + "ms (checksum " + str(x) + ")")
+}

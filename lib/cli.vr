@@ -1,0 +1,43 @@
+// cli.vr — getopt-style command-line flag parsing for command-line tools.
+//
+//   import cli
+//   fn main() {
+//       let name = cli.flag("name", "world")   // --name bob | --name=bob | -n bob
+//       let verbose = cli.has("v")             // -v  (boolean flag)
+//       let rest = cli.positional()            // non-flag args
+//       println("hi " + name)
+//   }
+//
+// Parsing is done by the VM (full string handling); this module exposes it as
+// namespaced helpers. Supported forms:
+//
+//   --name value    long flag with a space-separated value
+//   --name=value    long flag with an inline value
+//   --name          long boolean flag
+//   -v              short flag, treated as boolean (never swallows a positional)
+//   -n=value        short flag with an inline value
+//
+// The short alias is the long name's first character (`--verbose` -> `-v`). To
+// give a value to a short flag, use the inline form `-n=value` (or the long
+// form `--name value`). `--` stops flag parsing; everything after is
+// positional. The first occurrence of a flag wins. Negative numbers (-5) are
+// values, not flags.
+
+// flag returns the value of the named flag, or `default` when absent.
+fn flag(name, default) {
+	let v = flag_val(name)
+	if v == "" {
+		return default
+	}
+	return v
+}
+
+// has returns 1 when the flag was passed (boolean or with a value), else 0.
+fn has(name) {
+	return flag_has(name)
+}
+
+// positional returns the non-flag arguments in order; `--` ends flag parsing.
+fn positional() {
+	return flag_positional()
+}

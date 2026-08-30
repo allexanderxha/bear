@@ -1,0 +1,160 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "VuurRaaf",
+	"scopeName": "source.vuurraaf",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#function-declaration"
+		},
+		{
+			"include": "#function-call"
+		},
+		{
+			"include": "#identifiers"
+		},
+		{
+			"include": "#operators"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.vuurraaf",
+					"match": "//.*$"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"name": "string.quoted.raw.vuurraaf",
+					"begin": "r\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.vuurraaf",
+							"match": "\\\\(\\\\|n|t|r|\"|$)"
+						}
+					]
+				},
+				{
+					"name": "string.quoted.double.vuurraaf",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.vuurraaf",
+							"match": "\\\\(\\\\|n|t|r|\"|$)"
+						},
+						{
+							"name": "string.interpolated.vuurraaf",
+							"begin": "\\$\\{",
+							"end": "\\}",
+							"patterns": [
+								{
+									"include": "#identifiers"
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.vuurraaf",
+					"match": "\\b(0x[0-9a-fA-F]+|\\d+(\\.\\d+)?([eE][+-]?\\d+)?)\\b"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.vuurraaf",
+					"match": "\\b(fn|struct|enum|interface|import|const|let|if|else|while|for|in|match|break|continue|return|assert|try|catch|throw|and|or|not|true|false|none)\\b"
+				}
+			]
+		},
+		"function-declaration": {
+			"patterns": [
+				{
+					"name": "meta.function.vuurraaf",
+					"begin": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+					"beginCaptures": {
+						"1": {
+							"name": "keyword.control.vuurraaf"
+						},
+						"2": {
+							"name": "entity.name.function.vuurraaf"
+						}
+					},
+					"end": "\\)",
+					"patterns": [
+						{
+							"include": "#identifiers"
+						}
+					]
+				}
+			]
+		},
+		"function-call": {
+			"patterns": [
+				{
+					"name": "meta.function-call.vuurraaf",
+					"begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+					"beginCaptures": {
+						"1": {
+							"name": "entity.name.function.vuurraaf"
+						}
+					},
+					"end": "\\)",
+					"patterns": [
+						{
+							"include": "#identifiers"
+						},
+						{
+							"include": "#numbers"
+						},
+						{
+							"include": "#strings"
+						}
+					]
+				}
+			]
+		},
+		"identifiers": {
+			"patterns": [
+				{
+					"name": "entity.name.type.vuurraaf",
+					"match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+				},
+				{
+					"name": "variable.other.vuurraaf",
+					"match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.vuurraaf",
+					"match": "==|!=|<=|>=|<<|>>|\\+|\\-|\\*|/|%|&|\\||\\^|~|=|<|>"
+				}
+			]
+		}
+	}
+}

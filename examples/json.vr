@@ -1,0 +1,46 @@
+// json.vr — the stdlib JSON + formatting builtins.
+//   vr run examples/json.vr
+
+fn main() {
+	// --- encode: structs -> objects, arrays -> arrays, none -> null ---
+	let user = {
+		name: "amy",
+		age: 30,
+		active: 1,
+		score: 87.5,
+		tags: ["admin", "beta"],
+		meta: { last_seen: none }
+	}
+	println(json_encode(user))
+	// {"name":"amy","age":30,"active":1,"score":87.5,"tags":["admin","beta"],"meta":{"last_seen":null}}
+
+	// --- decode: objects become structs, numbers become ints when integral ---
+	let parsed = json_decode("{\"name\": \"bob\", \"age\": 42, \"scores\": [1, 2.5, 3]}")
+	println(parsed.name)
+	println(parsed.age)
+	println(parsed.scores[1])
+	println(json_encode(parsed))
+
+	// null decodes to `none` — test with ==
+	let maybe = json_decode("{\"value\": null}")
+	if maybe.value == none {
+		println("field is none")
+	}
+
+	// --- format: printf-style ---
+	println(format(3.14159, "%.2f"))     // 3.14
+	println(format(42, "%05d"))          // 00042
+	println(format(255, "%X"))           // FF
+	println(format("right", "%10s"))     //      right
+	println(format("left", "%-10s") + "|") // left       |
+
+	// --- string tools ---
+	println("hello world".replace("l", "L"))
+	println(len(split_lines("a\nb\nc")))
+	println(pad_left("42", 5) + "|")
+	println("ab".repeat(3))
+
+	// --- json + formatting together ---
+	let total = 1234.5
+	println("total: " + format(total, "%.2f"))
+}

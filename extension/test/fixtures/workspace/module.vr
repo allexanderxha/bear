@@ -1,0 +1,6 @@
+import os
+
+fn main() {
+	let a = os.exists("x")
+	println(a)
+}

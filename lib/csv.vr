@@ -1,0 +1,13 @@
+// csv.vr — comma-separated values parsing (part of the VuurRaaf stdlib).
+//
+//   import csv
+//   let rows = csv.parse("name,age\namy,30\nbob,41")
+//   // rows == [["name", "age"], ["amy", "30"], ["bob", "41"]]
+//   println(rows[1][0])   // amy
+//
+// parse returns an array of rows; each row is an array of cell strings.
+// Quoted fields, embedded commas and newlines are handled.
+
+fn parse(s) {
+	return csv_parse(s)
+}

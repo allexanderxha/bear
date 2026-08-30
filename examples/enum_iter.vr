@@ -25,7 +25,7 @@ fn main() {
 	}
 	
 	// iterate and use count
-	let total = 0
+	mut total = 0
 	for c in Color {
 		total = total + c.count()
 	}
@@ -40,7 +40,7 @@ fn main() {
 	}
 	
 	// break and continue work
-	let weekdays = 0
+	mut weekdays = 0
 	for d in Day {
 		if d == Day.saturday {
 			break

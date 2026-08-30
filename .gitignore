@@ -1,3 +1,6 @@
 bin/vr
 *.vobj
 *.vbin
+node_modules/
+*.vsix
+.vscode-test

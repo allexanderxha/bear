@@ -1,0 +1,6 @@
+// debug: inline arr[0]
+
+fn main() {
+    let nums = [10, 20, 30]
+    println(nums[0])
+}

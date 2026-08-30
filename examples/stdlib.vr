@@ -1,0 +1,102 @@
+// stdlib.vr — tests for the extended stdlib modules (regex, crypto, csv,
+// path/process helpers, date arithmetic). Run with `vr test examples/stdlib.vr`.
+
+import regex
+import crypto
+import csv
+import os
+import time
+import http
+
+fn test_regex() {
+	assert regex.is_match(r"^[a-z]+$", "hello") == 1
+	assert regex.is_match(r"^[a-z]+$", "Hello1") == 0
+	let nums = regex.find_all(r"\d+", "a1b22c333")
+	assert len(nums) == 3
+	assert nums[0] == "1"
+	assert nums[2] == "333"
+	assert regex.replace(r"\d+", "x1y22z", "#") == "x#y#z"
+	let parts = regex.split(r"[,;]", "a,b;c")
+	assert len(parts) == 3
+	assert parts[1] == "b"
+	// replacing a match in context (no group refs — use find_all for captures)
+	assert regex.replace(r"\d+", "id:42 name:bob", "#") == "id:# name:bob"
+	// invalid pattern throws (catchable)
+	try {
+		regex.is_match("([", "x")
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+}
+
+fn test_crypto() {
+	assert crypto.sha256("hello") == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+	assert crypto.md5("hello") == "5d41402abc4b2a76b9719d911017c592"
+	let enc = crypto.base64_encode("hello")
+	assert enc == "aGVsbG8="
+	assert crypto.base64_decode(enc) == "hello"
+	// hashes differ across inputs
+	assert crypto.sha256("a") != crypto.sha256("b")
+}
+
+fn test_csv() {
+	let rows = csv.parse("name,age\n\"amy, smith\",30\nbob,41")
+	assert len(rows) == 3
+	assert rows[0][0] == "name"
+	assert rows[1][0] == "amy, smith"
+	assert rows[2][1] == "41"
+	// empty input yields no rows
+	assert len(csv.parse("")) == 0
+}
+
+fn test_path_helpers() {
+	assert os.ext("a/b/file.txt") == ".txt"
+	assert os.ext("noext") == ""
+	assert os.base("a/b/c.vr") == "c.vr"
+	assert os.dir("a/b/c.vr") == "a/b"
+	assert os.rel("a/b/c.txt", "a") == "b/c.txt"
+	assert os.rel("a/b/c.txt", "a/b/c.txt") == "."
+	let abs_p = os.abs("main.v")
+	assert abs_p != "main.v"
+	assert len(abs_p) > 0
+}
+
+fn test_exec_full() {
+	let res = os.exec_full("echo hello-out; echo hello-err 1>&2")
+	assert res.code == 0
+	assert res.stdout == "hello-out\n"
+	assert res.stderr == "hello-err\n"
+	let bad = os.exec_full("exit 3")
+	assert bad.code == 3
+}
+
+fn test_time_arithmetic() {
+	let t = time.now()
+	assert time.add_days(t, 1) - t == 86400
+	assert time.add_hours(t, 2) - t == 7200
+	assert time.add_minutes(t, 5) - t == 300
+	assert time.add_seconds(t, 10) - t == 10
+	// 2026-08-25 was a Tuesday
+	let fixed = time.parse("2026-08-25 12:00:00")
+	assert time.weekday(fixed) == "Tue"
+	let later = time.add_days(fixed, 1)
+	assert time.date(later) == "2026-08-26"
+}
+
+fn test_http_headers_timeout() {
+	// offline-safe: connecting to a closed local port fails fast
+	try {
+		let h = { "X-Test": "1" }
+		http.request("GET", "http://127.0.0.1:1/nope", "", h, 500)
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+	try {
+		http.get_timeout("http://127.0.0.1:1/nope", 500)
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+}

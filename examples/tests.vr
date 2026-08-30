@@ -1,6 +1,20 @@
 // tests.vr — functions named test_* are picked up by `vr test`.
 //   vr test examples/tests.vr
 
+import os
+import json
+import strings
+import math
+import http
+import time
+
+enum Suit {
+	hearts
+	diamonds
+	clubs
+	spades
+}
+
 fn add(a, b) {
 	return a + b
 }
@@ -19,8 +33,8 @@ fn test_strings() {
 }
 
 fn test_loops() {
-	let total = 0
-	let i = 1
+	mut total = 0
+	mut i = 1
 	while i <= 10 {
 		total = total + i
 		i = i + 1
@@ -50,12 +64,12 @@ fn test_arrays() {
 }
 
 fn test_for_range() {
-	let total = 0
+	mut total = 0
 	for i in 0..5 {
 		total = total + i
 	}
 	assert total == 10 // 0+1+2+3+4
-	let inc = 0
+	mut inc = 0
 	for i in 1...3 {
 		inc = inc + i
 	}
@@ -64,7 +78,7 @@ fn test_for_range() {
 
 fn test_for_in() {
 	let a = [5, 6, 7]
-	let total = 0
+	mut total = 0
 	for x in a {
 		total = total + x
 	}
@@ -80,7 +94,7 @@ fn test_for_in() {
 
 fn test_break_continue() {
 	// break exits the loop early
-	let total = 0
+	mut total = 0
 	for i in 0..100 {
 		if i == 5 {
 			break
@@ -90,7 +104,7 @@ fn test_break_continue() {
 	assert total == 10 // 0+1+2+3+4
 
 	// continue skips to the next iteration
-	let sum = 0
+	mut sum = 0
 	for i in 0..6 {
 		if i == 3 {
 			continue
@@ -100,7 +114,7 @@ fn test_break_continue() {
 	assert sum == 12 // 0+1+2+4+5 (3 skipped)
 
 	// break and continue in while loops
-	let n = 0
+	mut n = 0
 	while true {
 		n = n + 1
 		if n == 3 {
@@ -127,7 +141,7 @@ fn test_break_continue() {
 
 fn test_else_if() {
 	let score = 85
-	let grade = ""
+	mut grade = ""
 	if score >= 90 {
 		grade = "A"
 	} else if score >= 80 {
@@ -142,7 +156,7 @@ fn test_else_if() {
 }
 
 fn test_match() {
-	let total = 0
+	mut total = 0
 	match 2 {
 		1 {
 			total = total + 1
@@ -158,7 +172,7 @@ fn test_match() {
 
 	// match on strings
 	let word = "cat"
-	let sound = ""
+	mut sound = ""
 	match word {
 		"dog" {
 			sound = "woof"
@@ -173,7 +187,7 @@ fn test_match() {
 	assert sound == "meow"
 
 	// no else arm: nothing runs when nothing matches
-	let hit = 0
+	mut hit = 0
 	match 99 {
 		1 {
 			hit = 1
@@ -224,6 +238,501 @@ fn test_structs() {
 	let c = { n: 1 }
 	assert a == b
 	assert a != c
+}
+
+fn test_json() {
+	// encoding
+	assert json_encode(42) == "42"
+	assert json_encode(3.14) == "3.14"
+	assert json_encode(1.0) == "1"
+	assert json_encode("hi") == "\"hi\""
+	assert json_encode([1, "two", 3.5]) == "[1,\"two\",3.5]"
+	let rec = { name: "amy", age: 30 }
+	assert json_encode(rec) == "{\"name\":\"amy\",\"age\":30}"
+	assert json_encode(none) == "null"
+
+	// decoding
+	assert json_decode("42") == 42
+	assert json_decode("3.14") == 3.14
+	assert json_decode("\"hi\"") == "hi"
+	assert json_decode("true") == 1
+	assert json_decode("null") == none
+	let obj = json_decode("{\"x\": 1, \"y\": [1, 2], \"z\": {\"deep\": true}}")
+	assert obj.x == 1
+	assert obj.y[1] == 2
+	assert obj.z.deep == 1
+
+	// round-trip
+	assert json_encode(json_decode("{\"a\": 1, \"b\": [2, 3]}")) == "{\"a\":1,\"b\":[2,3]}"
+
+	// unicode escapes
+	assert json_decode("\"\\u0041\"") == "A"
+	assert json_decode("\"\\ud83d\\ude00\"") == "😀"
+}
+
+fn test_format() {
+	assert format(42, "%d") == "42"
+	assert format(42, "%05d") == "00042"
+	assert format(-42, "%05d") == "-0042"
+	assert format(42, "%-5d") == "42   "
+	assert format(3.14159, "%.2f") == "3.14"
+	assert format(3.0, "%.2f") == "3.00"
+	assert format(255, "%X") == "FF"
+	assert format("hi", "%s") == "hi"
+	assert format(7, "%5d") == "    7"
+}
+
+fn test_string_tools() {
+	assert replace("hello world", "l", "L") == "heLLo worLd"
+	assert "hello world".replace("o", "0") == "hell0 w0rld"
+	assert len(split_lines("a\nb\nc")) == 3
+	assert "a\nb".split_lines()[1] == "b"
+	assert pad("x", 4) == "x   "
+	assert "x".pad(4) == "x   "
+	assert pad_left("x", 4) == "   x"
+	assert "x".pad_left(4) == "   x"
+	assert repeat("ab", 3) == "ababab"
+	assert "ab".repeat(2) == "abab"
+	assert pad("toolong", 2) == "toolong"
+}
+
+fn test_none() {
+	assert none == none
+	assert none == 0 == false
+	assert none != 5
+	if none {
+		assert false
+	}
+	assert not (none == 1)
+}
+
+fn test_module_imports() {
+	// os module
+	if not os.exists("examples") {
+		assert false
+	}
+	if not os.is_dir("examples") {
+		assert false
+	}
+	if not os.is_file("main.v") {
+		assert false
+	}
+	assert os.base("a/b/c.vr") == "c.vr"
+	assert os.dir("a/b/c.vr") == "a/b"
+	assert len(os.glob("lib/*.vr")) == 10
+	let tmp = os.join(os.cwd(), "tmp_test.txt")
+	os.write_lines(tmp, ["x", "y"])
+	assert len(os.read_lines(tmp)) == 2
+	os.remove(tmp)
+
+	// json module
+	let data = json.decode("{\"a\": 1, \"b\": [2, 3]}")
+	assert json.encode(data) == "{\"a\":1,\"b\":[2,3]}"
+	assert strings.contains(json.pretty(data), "\n")
+
+	// strings module
+	assert strings.join(["a", "b"], "-") == "a-b"
+	assert strings.capitalize("hello") == "Hello"
+	assert strings.replace("foo", "o", "0") == "f00"
+	assert strings.pad_left("7", 3) == "  7"
+	assert strings.format(3.14159, "%.2f") == "3.14"
+
+	// math module
+	assert math.clamp(150, 0, 100) == 100
+	assert math.sign(-3) == -1
+	assert math.abs(-7) == 7
+}
+
+fn test_native_errors_are_catchable() {
+	try {
+		read_file("/no/such/file.vr")
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+	try {
+		json_decode("not json")
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+}
+
+fn test_closures() {
+	// closures in expression contexts must not corrupt surrounding values
+	let pick = fn (x) {
+		if x > 10 {
+			return "big"
+		}
+		return "small"
+	}
+	assert "a: " + pick(50) == "a: big"
+	assert pick(3) + "!" == "small!"
+	assert pick(50) + " " + pick(3) == "big small"
+	let dbl = fn (x) {
+		return x * 2
+	}
+	assert str(dbl(21)) == "42"
+	assert "v=" + str(dbl(4)) == "v=8"
+	// closure containing a loop
+	let sum = fn () {
+		mut total = 0
+		for i in 0..5 {
+			total = total + i
+		}
+		return total
+	}
+	assert sum() == 10
+	// closure call as a statement argument
+	let tag = fn (t) {
+		return "[" + t + "]"
+	}
+	assert tag("warn") == "[warn]"
+}
+
+fn test_enums() {
+	// variant values
+	assert Suit.hearts == 0
+	assert Suit.spades == 3
+	// enum.count()
+	assert Suit.hearts.count() == 4
+	// enum.to_string()
+	assert Suit.spades.to_string() == "spades"
+	// enums in expressions
+	let next = Suit.hearts + 1
+	assert next == 1
+	// enum iteration
+	mut names = []
+	for s in Suit {
+		names = push(names, s.to_string())
+	}
+	assert len(names) == 4
+	assert names[0] == "hearts"
+	assert names[3] == "spades"
+	// match on enum values
+	assert suit_code(Suit.clubs) == "c"
+	assert suit_code(Suit.hearts) == "h"
+}
+
+fn suit_code(s) {
+	match s {
+		Suit.hearts { return "h" }
+		Suit.clubs { return "c" }
+		else { return "?" }
+	}
+}
+
+fn test_http_errors() {
+	// offline-safe: connecting to a closed local port fails fast
+	try {
+		http.get("http://127.0.0.1:1/nope")
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+}
+
+fn test_time() {
+	let t = time.now()
+	assert t > 1700000000
+	// format produces fixed-width strings
+	let day = time.date(t)
+	assert len(day) == 10
+	assert day[4] == "-"[0]
+	let full = time.format(t, "YYYY-MM-DD HH:mm:ss")
+	assert len(full) == 19
+	// parse round-trips within a second
+	let back = time.parse(full)
+	assert abs(back - t) <= 1
+	// ms is more precise than seconds
+	assert time.ms() > t * 1000
+	// invalid input throws
+	try {
+		time.parse("not a date")
+		assert false
+	} catch e {
+		assert len(e) > 0
+	}
+}
+
+fn test_closure_capture() {
+	// closures capture enclosing locals by value
+	let factor = 3
+	let dbl = fn(x) {
+		return x * factor
+	}
+	assert dbl(7) == 21
+
+	let name = "alice"
+	let age = 30
+	let greet = fn() {
+		return "hi " + name + " age=" + str(age)
+	}
+	assert greet() == "hi alice age=30"
+
+	// capture by value: later changes to the outer var don't affect the closure
+	mut counter = 10
+	let read = fn() {
+		return counter
+	}
+	assert read() == 10
+	counter = 99
+	assert read() == 10
+
+	// nested closures capture through both levels
+	let base = 100
+	let outer = fn() {
+		let mid = 5
+		let inner = fn(x) {
+			return base + mid + x
+		}
+		return inner(1)
+	}
+	assert outer() == 106
+
+	// assignment to a captured variable writes the closure's own copy
+	mut n = 1
+	let bump = fn() {
+		n = n + 1
+		return n
+	}
+	assert bump() == 2
+	assert n == 1
+
+	// closure stored in a struct, called dynamically
+	let handler = fn() {
+		return "handled"
+	}
+	let rec = { run: handler }
+	assert rec.run() == "handled"
+}
+
+fn test_dynamic_map_keys() {
+	// map keys may be computed expressions, not just string literals
+	let m = {}
+	for i in 0..3 {
+		m["key" + str(i)] = i * 10
+	}
+	assert m["key0"] == 0
+	assert m["key2"] == 20
+	let k = "key1"
+	assert m[k] == 10
+	assert has(m, "key1") == 1
+	assert len(m) == 3
+	delete(m, "key1")
+	assert has(m, "key1") == 0
+	assert len(m) == 2
+	// nested computed access
+	let cfg = { "db": { "host": "localhost", "port": 5432 } }
+	let which = "db"
+	assert cfg[which]["host"] == "localhost"
+}
+
+fn test_sort_large() {
+	// merge sort must handle large arrays (O(n log n)) and stay sorted
+	mut a = []
+	let n = 2000
+	mut i = 0
+	while i < n {
+		a = push(a, (n - i) % 97)
+		i = i + 1
+	}
+	sort(a)
+	assert len(a) == n
+	mut ok = 1
+	mut j = 1
+	while j < n {
+		if a[j - 1] > a[j] {
+			ok = 0
+		}
+		j = j + 1
+	}
+	assert ok == 1
+	assert a[0] == 0
+	assert a[n - 1] == 96
+}
+
+fn test_mutable_bindings() {
+	// `let` is immutable: reassignment is a compile-time error (tested in CI)
+	// `mut` opts into reassignment
+	mut counter = 0
+	counter = counter + 1
+	counter = counter + 2
+	assert counter == 3
+	// `let` still reads fine and does not accept reassignment
+	let fixed = 42
+	assert fixed == 42
+}
+
+fn test_string_builder() {
+	// string builders avoid O(n^2) reallocation of repeated `+`
+	mut sb = strings.builder()
+	for i in 0..10 {
+		sb = strings.build_add(sb, "x" + str(i) + ",")
+	}
+	let out = strings.build_str(sb)
+	assert out == "x0,x1,x2,x3,x4,x5,x6,x7,x8,x9,"
+}
+
+fn test_spawn_join() {
+	// spawn runs a closure on an OS thread; spawn_join waits and returns
+	let j1 = spawn(worker_sum, 100)
+	let j2 = spawn(worker_sum, 200)
+	let r1 = spawn_join(j1)
+	let r2 = spawn_join(j2)
+	assert r1 == 4950
+	assert r2 == 19900
+}
+
+fn worker_sum(n) {
+	mut s = 0
+	mut i = 0
+	while i < n {
+		s = s + i
+		i = i + 1
+	}
+	return s
+}
+
+fn test_spawn_string_result() {
+	let j = spawn(worker_greet, "world")
+	let res = spawn_join(j)
+	assert res == "hello world"
+}
+
+fn worker_greet(name) {
+	return "hello " + name
+}
+
+fn test_spawn_error_propagation() {
+	mut caught = false
+	try {
+		let j = spawn(worker_boom)
+		let r = spawn_join(j)
+		assert r == 0
+	} catch e {
+		caught = true
+	}
+	assert caught
+}
+
+fn worker_boom() {
+	let x = 1 / 0
+	return x
+}
+
+fn test_string_coercion() {
+	// String + any value stringifies, so error messages "just work"
+	let e = { code: 403, msg: "forbidden" }
+	assert "err: " + e == "err: {code: 403, msg: forbidden}"
+	assert "n=" + 42 == "n=42"
+	assert "f=" + 3.5 == "f=3.5"
+	assert "a=" + [1, 2] == "a=[1, 2]"
+	assert "b=" + none == "b=none"
+}
+
+fn test_typed_throw() {
+	// throw and catch arbitrary values (structs, ints, floats)
+	mut got = ""
+	try {
+		throw { reason: "boom" }
+	} catch err {
+		got = "" + err
+	}
+	assert got == "{reason: boom}"
+
+	mut gotn = -1
+	try {
+		throw 99
+	} catch err {
+		gotn = int(err)
+	}
+	assert gotn == 99
+}
+
+fn test_flag_parsing() {
+	// flags are read from args() at runtime; here we check the lookup helpers
+	// behave with no flags (defaults) — the actual parse is exercised in CI.
+	assert flag_val("missing") == ""
+	assert flag_has("missing") == 0
+	assert len(flag_positional()) == 0
+}
+
+fn test_defer_cleanup() {
+	// defer runs on every exit path; its effect is visible to the caller via
+	// the shared mutable array (arrays are references).
+	let log = []
+	let a = defer_probe(log, 1)
+	assert a == 0
+	assert len(log) == 2
+	assert log[0] == "open"
+	assert log[1] == "close"
+}
+
+fn defer_probe(log, mode) {
+	push(log, "open")
+	defer push(log, "close")
+	if mode == 0 {  // early return path also runs defer
+		return 9
+	}
+	return 0
+}
+
+fn test_defer_lifo() {
+	// defers run in reverse declaration order (LIFO), all before returning
+	let logA = []
+	let r = defer_lifo(logA)
+	assert r == 0
+	assert len(logA) == 2
+	assert logA[0] == "2nd-registered"
+	assert logA[1] == "1st-registered"
+}
+
+fn defer_lifo(log) {
+	defer push(log, "1st-registered")
+	defer push(log, "2nd-registered")
+	return 0
+}
+
+fn test_in_operator() {
+	let arr = [1, 2, 3]
+	assert 2 in arr
+	assert 9 in arr == false
+	let m = {x: 1}
+	assert "x" in m
+	assert "zzz" in m == false
+	let s = "hello world"
+	assert "world" in s
+	assert "nope" in s == false
+	assert not (9 in arr)
+}
+
+fn test_range_helper() {
+	let up = range(0, 4)
+	assert len(up) == 4
+	assert up[0] == 0
+	assert up[3] == 3
+	let down = range(3, 0)
+	assert down[0] == 3
+	assert down[2] == 1
+	assert len(down) == 3
+}
+
+fn test_type_info() {
+	let ti = type_info(42)
+	assert ti.kind == "int"
+	assert ti.is_int == 1
+	assert ti.is_number == 1
+	let ts = type_info("xyz")
+	assert ts.is_string == 1
+	assert ts.len == 3
+	let tn = type_info(none)
+	assert tn.kind == "none"
+	assert tn.is_none == 1
+	let to = type_info({a: 1})
+	assert to.is_struct == 1
+	assert len(to.fields) == 1
+	assert to.fields[0] == "a"
 }
 
 fn test_failing() {

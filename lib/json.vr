@@ -1,0 +1,18 @@
+// json.vr — JSON helpers (part of the VuurRaaf stdlib).
+//
+//   import json
+//   let data = json.decode("{\"a\": 1}")
+//   println(json.encode(data))
+//   println(json.pretty(data))
+
+fn encode(x) {
+	return json_encode(x)
+}
+
+fn decode(s) {
+	return json_decode(s)
+}
+
+fn pretty(x) {
+	return json_pretty(x)
+}

@@ -14,20 +14,20 @@ fn classify(n) {
 	}
 }
 
-// describe names a number with a match statement.
+// describe names a number with a match statement (including range arms).
 fn describe(n) {
 	match n {
 		0 {
 			println("nothing")
 		}
-		1 {
-			println("lonely")
-		}
-		2 {
-			println("a pair")
-		}
 		7 {
 			println("lucky")
+		}
+		1..3 {
+			println("small")
+		}
+		4..9 {
+			println("medium")
 		}
 		else {
 			println("just " + n)
@@ -42,10 +42,11 @@ fn main() {
 	println(classify(7))
 	println(classify(100))
 
-	// match with else
+	// match with else and range arms
 	describe(0)
 	describe(1)
 	describe(2)
+	describe(5)
 	describe(7)
 	describe(42)
 
@@ -64,7 +65,7 @@ fn main() {
 	}
 
 	// match inside a loop (break/continue still work)
-	let found = 0
+	mut found = 0
 	for i in 0..10 {
 		match i {
 			4 {

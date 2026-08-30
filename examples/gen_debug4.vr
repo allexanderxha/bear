@@ -1,0 +1,16 @@
+// debug: trace everything
+
+fn first[T](arr) {
+    println("inside first")
+    println(arr)
+    let x = arr[0]
+    println("x = ${x}")
+    return x
+}
+
+fn main() {
+    println("calling first")
+    let nums = [10, 20, 30]
+    let result = first(nums)
+    println("result = ${result}")
+}

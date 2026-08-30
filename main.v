@@ -52,6 +52,9 @@ fn main() {
 		'compile', 'c' {
 			toolchain_compile(rest) or { die('compile', err) }
 		}
+		'check', 'chk' {
+			toolchain_check(rest) or { die('check', err) }
+		}
 		'assemble', 'a' {
 			toolchain_assemble(rest) or { die('assemble', err) }
 		}
@@ -61,17 +64,47 @@ fn main() {
 		'run', 'r' {
 			toolchain_run(rest) or { die('run', err) }
 		}
-		'debug', 'd' {
-			toolchain_debug(rest) or { die('debug', err) }
-		}
+	'debug', 'd' {
+		toolchain_debug(rest) or { die('debug', err) }
+	}
+	'profile', 'p' {
+		toolchain_profile(rest) or { die('profile', err) }
+	}
+	'fuzz' {
+		toolchain_fuzz(rest) or { die('fuzz', err) }
+	}
 		'test', 't' {
 			toolchain_test(rest) or { die('test', err) }
 		}
 		'bench', 'b' {
 			toolchain_bench(rest) or { die('bench', err) }
 		}
+		'repl', 'i' {
+			toolchain_repl() or { die('repl', err) }
+		}
+		'lsp' {
+			toolchain_lsp()
+		}
+		'fmt' {
+			toolchain_fmt(rest) or { die('fmt', err) }
+		}
+		'init' {
+			toolchain_init(rest) or { die('init', err) }
+		}
+		'get' {
+			toolchain_get(rest) or { die('get', err) }
+		}
+		'install' {
+			toolchain_install() or { die('install', err) }
+		}
+		'list' {
+			toolchain_list() or { die('list', err) }
+		}
 		'clean' {
 			toolchain_clean()
+		}
+		'make', 'm', 'build' {
+			toolchain_make(rest) or { die('make', err) }
 		}
 		'up' {
 			toolchain_up() or { die('up', err) }
@@ -92,6 +125,21 @@ fn main() {
 			toolchain_unloader()
 		}
 		else {
+			// direct script execution — this is what makes shebangs work:
+			// `#!/usr/bin/env vr` has the kernel call `vr <script> [args...]`,
+			// so route an existing .vrmm/.vr file to make/run accordingly
+			if os.exists(cmd) && cmd.ends_with('.vrmm') {
+				mut m := ['-f', cmd]
+				m << args[1..]
+				toolchain_make(m) or { die('make', err) }
+				return
+			}
+			if os.exists(cmd) && cmd.ends_with('.vr') {
+				mut r := [cmd]
+				r << args[1..]
+				toolchain_run(r) or { die('run', err) }
+				return
+			}
 			eprintln('vr: unknown command "${cmd}"')
 			eprintln("run 'vr help' for usage")
 			exit(1)
@@ -147,12 +195,27 @@ fn toolchain_help() {
 	println('usage: vr <command> [args]')
 	println('')
 	println('  compile <file.vr> [-o out.vobj]          compile source to an object file')
+	println('  check <file.vr>                          parse and type-check (no codegen)')
 	println('  assemble <file.vasm> [-o out.vobj]       assemble raw bytecode to an object file')
 	println('  link <a.vobj> [more.vobj ...] [-o out]   link objects into an executable')
 	println('  run <file.vr|file.vbin>                  compile, link and run (or run a binary)')
-	println('  debug <file.vr|file.vbin>                run with an instruction trace')
-	println('  test <file.vr>                           run every test_* function')
+	println('  debug <file.vr|file.vbin>                interactive debugger (breakpoints, step, locals)')
+	println('  profile <file.vr|file.vbin>              run and report per-function instruction counts')
+	println('  fuzz [--seed N] [--iters N]              fuzz the compiler and VM for crashes/hangs')
+	println('  test <file.vr|dir>                       run every test_* function')
 	println('  bench <file.vr> [iterations]             benchmark main()')
+	println('  repl                                     interactive session')
+	println('  lsp                                      language server (JSON-RPC over stdio)')
+	println('  fmt [-w] <file.vr>                       format source')
+	println('  init [name]                              scaffold a project')
+	println('  get <owner/repo | url | ./path>          fetch a package into vendor/')
+	println('  install                                  install deps from vr.mod')
+	println('  list                                     show the project manifest')
+	println('  make [target] [args...]                  run build.vrmm (target = main)')
+	println('  make -f <file.vrmm> [target] [args...]   run another build module (.vrmm)')
+	println('  build                                    alias for make')
+	println('  <script.vrmm> [target] [args...]         run a build module directly (shebang)')
+	println('  <file.vr> [args...]                      run a program directly (shebang)')
 	println('  clean                                    remove build artifacts')
 	println('  up                                       rebuild the vr binary into bin/')
 	println('  symlink                                  link bin/vr into your PATH')
@@ -262,6 +325,17 @@ fn toolchain_compile(args []string) ! {
 	println('compiled ${src} -> ${out} (${o.code.len} bytes code, ${o.symbols.len} symbols, ${o.relocs.len} relocations)')
 }
 
+// toolchain_check parses and type-checks a source file without generating
+// code or writing any artifacts — the fast lint path for editors and CI.
+fn toolchain_check(args []string) ! {
+	if args.len == 0 {
+		return error('usage: vr check <file.vr>')
+	}
+	src := args[0]
+	compiler.check_file(src)!
+	println('checked ${src} — no errors')
+}
+
 fn toolchain_assemble(args []string) ! {
 	mut src := ''
 	mut out := ''
@@ -311,44 +385,217 @@ fn toolchain_link(args []string) ! {
 
 fn toolchain_run(args []string) ! {
 	if args.len == 0 {
-		return error('usage: vr run <file.vr|file.vbin>')
+		return error('usage: vr run <file.vr|file.vbin> [program-args...]  (add -w to watch, --profile to profile, --max-ops N to cap instructions)')
 	}
-	f := args[0]
+	mut watch := false
+	mut profile := false
+	mut max_ops := i64(0)
+	mut rest := args.clone()
+	for rest.len > 0 && (rest[0].starts_with('-') && rest[0] != '-') {
+		if rest[0] == '-w' || rest[0] == '--watch' {
+			watch = true
+			rest = rest[1..]
+		} else if rest[0] == '--profile' {
+			profile = true
+			rest = rest[1..]
+		} else if rest[0] == '--max-ops' && rest.len > 1 {
+			max_ops = rest[1].i64()
+			rest = rest[2..]
+		} else {
+			return error('unknown flag "${rest[0]}" (supported: -w, --profile, --max-ops N)')
+		}
+	}
+	if rest.len == 0 {
+		return error('usage: vr run <file.vr|file.vbin> [program-args...]  (add -w to watch, --profile to profile, --max-ops N to cap instructions)')
+	}
+	f := rest[0]
+	prog_args := rest[1..]
+	if watch {
+		run_watch(f, prog_args)!
+		return
+	}
 	if f.ends_with('.vbin') {
 		bin := obj.read_bin(f)!
-		vm.run(bin, 'main', false)!
+		if profile {
+			print_profile(vm.run_profiled(bin, 'main', prog_args)!, f)
+			return
+		}
+		vm.run_opts(bin, 'main', vm.RunOpts{ args: prog_args, max_ops: max_ops })!
 		return
 	}
 	if f.ends_with('.vr') {
-		run_src(f, 'main', false)!
+		if profile {
+			run_src_profiled(f, prog_args)!
+			return
+		}
+		run_src_with_args(f, 'main', false, prog_args, max_ops)!
 		return
 	}
 	return error('unsupported file type: ${f} (expected .vr or .vbin)')
 }
 
-fn toolchain_debug(args []string) ! {
-	if args.len == 0 {
-		return error('usage: vr debug <file.vr|file.vbin>')
+// print_profile renders the profiled run's report as a table.
+fn print_profile(rep vm.ProfileReport, f string) {
+	println('profile: ${f}')
+	println('${pad_right('function', 24)}${pad_left('calls', 8)}${pad_left('instr', 12)}${pad_left('%', 7)}')
+	for r in rep.rows {
+		if r.instr == 0 && r.calls == 0 {
+			continue
+		}
+		pct := if rep.total > 0 { 100.0 * f64(r.instr) / f64(rep.total) } else { 0.0 }
+		println('${pad_right(r.name, 24)}${pad_left(r.calls.str(), 8)}${pad_left(r.instr.str(), 12)}${pad_left(pct_fmt(pct) + '%', 7)}')
 	}
-	f := args[0]
-	println('debug: tracing execution of ${f}')
+	println('${pad_right('total', 24)}${pad_left(rep.total.str(), 12)}')
+}
+
+// pad_left pads s with spaces on the left to reach width w.
+fn pad_left(s string, w int) string {
+	mut out := s
+	for out.len < w {
+		out = ' ' + out
+	}
+	return out
+}
+
+// pad_right pads s with spaces on the right to reach width w.
+fn pad_right(s string, w int) string {
+	mut out := s
+	for out.len < w {
+		out += ' '
+	}
+	return out
+}
+
+// pct_fmt renders a percentage with one decimal.
+fn pct_fmt(p f64) string {
+	return '${p:.1f}'
+}
+
+// run_src_profiled compiles+links a source file and runs it with profiling.
+fn run_src_profiled(src string, prog_args []string) ! {
+	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
+	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
+	defer {
+		os.rm(tmp_obj) or {}
+		os.rm(tmp_bin) or {}
+	}
+	o := compiler.compile_file(src)!
+	obj.write(tmp_obj, o)!
+	linker.link([tmp_obj], tmp_bin)!
+	bin := obj.read_bin(tmp_bin)!
+	print_profile(vm.run_profiled(bin, 'main', prog_args)!, src)
+}
+
+// run_watch recompiles and reruns the program whenever the source file (or
+// anything it imports) changes — the classic develop-run-edit loop.
+fn run_watch(f string, prog_args []string) ! {
+	if !f.ends_with('.vr') {
+		return error('watch mode works on .vr source files, got ${f}')
+	}
+	mut last := os.file_last_mod_unix(f)
+	println('watching ${f} (Ctrl-C to stop)')
+	for {
+		// clear the screen between runs for a clean diff of output
+		print('\x1b[2J\x1b[H')
+		println('== ${os.file_name(f)} — ${time.now().custom_format('HH:mm:ss')} ==')
+		run_src_with_args(f, 'main', false, prog_args, 0) or {
+			eprintln('${err.msg()}')
+		}
+		for {
+			time.sleep(400 * time.millisecond)
+			cur := os.file_last_mod_unix(f)
+			if cur != last {
+				last = cur
+				break
+			}
+		}
+	}
+}
+
+// toolchain_debug starts the interactive debugger: run to the first
+// --break <line>, then accept commands (continue/step/next/finish/print/...).
+// With no breakpoints it stops at program entry so breakpoints can be set
+// before anything runs. --trace keeps the old full instruction trace.
+fn toolchain_debug(args []string) ! {
+	mut f := ''
+	mut bps := []int{}
+	mut trace := false
+	mut i := 0
+	for i < args.len {
+		a := args[i]
+		if a == '--break' && i + 1 < args.len {
+			bps << args[i + 1].int()
+			i += 2
+		} else if a == '--trace' {
+			trace = true
+			i++
+		} else if f == '' {
+			f = a
+			i++
+		} else {
+			return error('unexpected argument "${a}" (usage: vr debug <file> [--break N]... [--trace])')
+		}
+	}
+	if f == '' {
+		return error('usage: vr debug <file.vr|file.vbin> [--break N]... [--trace]')
+	}
 	if f.ends_with('.vbin') {
 		bin := obj.read_bin(f)!
-		vm.run(bin, 'main', true)!
+		vm.run_opts(bin, 'main', vm.RunOpts{ debug: true, breakpoints: bps, trace: trace })!
 		return
 	}
 	if f.ends_with('.vr') {
-		run_src(f, 'main', true)!
+		run_src_debug(f, bps, trace)!
 		return
 	}
 	return error('unsupported file type: ${f} (expected .vr or .vbin)')
+}
+
+// toolchain_profile is `vr profile <file> [args...]` — run with per-function
+// instruction/call counting and print the hot-function report.
+fn toolchain_profile(args []string) ! {
+	if args.len == 0 {
+		return error('usage: vr profile <file.vr|file.vbin> [program-args...]')
+	}
+	f := args[0]
+	prog_args := args[1..]
+	if f.ends_with('.vbin') {
+		bin := obj.read_bin(f)!
+		print_profile(vm.run_profiled(bin, 'main', prog_args)!, f)
+		return
+	}
+	if f.ends_with('.vr') {
+		run_src_profiled(f, prog_args)!
+		return
+	}
+	return error('unsupported file type: ${f} (expected .vr or .vbin)')
+}
+
+// run_src_debug compiles+links a source file and runs it under the debugger.
+fn run_src_debug(src string, bps []int, trace bool) ! {
+	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
+	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
+	defer {
+		os.rm(tmp_obj) or {}
+		os.rm(tmp_bin) or {}
+	}
+	o := compiler.compile_file(src)!
+	obj.write(tmp_obj, o)!
+	linker.link([tmp_obj], tmp_bin)!
+	bin := obj.read_bin(tmp_bin)!
+	vm.run_opts(bin, 'main', vm.RunOpts{ debug: true, breakpoints: bps, trace: trace })!
 }
 
 fn toolchain_test(args []string) ! {
 	if args.len == 0 {
-		return error('usage: vr test <file.vr>')
+		return error('usage: vr test <file.vr|dir>')
 	}
-	src := args[0]
+	target := args[0]
+	if os.is_dir(target) {
+		test_dir(target)!
+		return
+	}
+	src := target
 	o := compiler.compile_file(src)!
 	mut tests := []string{}
 	for s in o.symbols {
@@ -382,6 +629,60 @@ fn toolchain_test(args []string) ! {
 	println('')
 	println('${passes} passed, ${fails} failed (${tests.len} total)')
 	if fails > 0 {
+		exit(1)
+	}
+}
+
+// test_dir runs every test_* function in every .vr file under a directory
+// (recursively), so a whole project's suite runs with one command.
+fn test_dir(dir string) ! {
+	files := os.walk_ext(dir, '.vr', os.WalkParams{})
+	mut files_sorted := files.clone()
+	files_sorted.sort()
+	mut total_pass := 0
+	mut total_fail := 0
+	mut file_count := 0
+	for src in files_sorted {
+		if os.file_name(src).starts_with('.') {
+			continue
+		}
+		o := compiler.compile_file(src) or {
+			eprintln('  COMPILE FAIL  ${src}  —  ${err.msg()}')
+			total_fail++
+			continue
+		}
+		mut tests := []string{}
+		for s in o.symbols {
+			if s.name.starts_with('test_') {
+				tests << s.name
+			}
+		}
+		if tests.len == 0 {
+			continue
+		}
+		file_count++
+		println('-- ${src}')
+		tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}_${file_count}.vobj')
+		tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}_${file_count}.vbin')
+		defer {
+			os.rm(tmp_obj) or {}
+			os.rm(tmp_bin) or {}
+		}
+		obj.write(tmp_obj, o)!
+		linker.link([tmp_obj], tmp_bin)!
+		bin := obj.read_bin(tmp_bin)!
+		for t in tests {
+			if run_test(bin, t) {
+				println('  PASS  ${t}')
+				total_pass++
+			} else {
+				total_fail++
+			}
+		}
+	}
+	println('')
+	println('${total_pass} passed, ${total_fail} failed across ${file_count} file(s)')
+	if total_fail > 0 {
 		exit(1)
 	}
 }
@@ -423,6 +724,10 @@ fn toolchain_bench(args []string) ! {
 }
 
 fn run_src(src string, entry string, trace bool) ! {
+	run_src_with_args(src, entry, trace, []string{}, 0)!
+}
+
+fn run_src_with_args(src string, entry string, trace bool, args []string, max_ops i64) ! {
 	tmp_obj := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vobj')
 	tmp_bin := os.join_path(os.temp_dir(), 'vr_${os.getpid()}.vbin')
 	defer {
@@ -433,11 +738,78 @@ fn run_src(src string, entry string, trace bool) ! {
 	obj.write(tmp_obj, o)!
 	linker.link([tmp_obj], tmp_bin)!
 	bin := obj.read_bin(tmp_bin)!
-	vm.run(bin, entry, trace)!
+	vm.run_opts(bin, entry, vm.RunOpts{ trace: trace, args: args, max_ops: max_ops })!
 }
 
 // ---------------------------------------------------------------------------
 // housekeeping
+
+// ---------------------------------------------------------------------------
+// make — run a .vrmm build module
+
+// toolchain_make compiles a .vrmm build module and runs one of its targets.
+// A build module is a VuurRaaf program that drives the toolchain through the
+// build_* builtins (build_compile, build_link, build_run, build_exec, ...).
+//
+//   vr make                 runs main() (or build()) from build.vrmm
+//   vr make clean           runs the clean() target
+//   vr make deploy --prod   runs deploy() with args() == ["--prod"]
+//   vr make -f x.vrmm t     runs target t from x.vrmm
+//
+// A target that returns nonzero (or calls exit(n>0) / throws) fails the build.
+fn toolchain_make(args []string) ! {
+	mut file := 'build.vrmm'
+	mut rest := []string{}
+	mut i := 0
+	for i < args.len {
+		if args[i] == '-f' && i + 1 < args.len {
+			file = args[i + 1]
+			i += 2
+		} else {
+			rest << args[i]
+			i++
+		}
+	}
+	if !os.exists(file) {
+		return error('no build module "${file}" found (write one, or run `vr init` to scaffold it)')
+	}
+	mut target := 'main'
+	if rest.len > 0 {
+		target = rest[0]
+		rest = rest[1..].clone()
+	}
+	// compile and link the build module itself
+	tmp_obj := os.join_path(os.temp_dir(), 'vr_make_${os.getpid()}.vobj')
+	tmp_bin := os.join_path(os.temp_dir(), 'vr_make_${os.getpid()}.vbin')
+	defer {
+		os.rm(tmp_obj) or {}
+		os.rm(tmp_bin) or {}
+	}
+	o := compiler.compile_file(file)!
+	obj.write(tmp_obj, o)!
+	linker.link([tmp_obj], tmp_bin)!
+	bin := obj.read_bin(tmp_bin)!
+	// pick the entry: an explicit target, else main, else build
+	mut names := []string{}
+	for f in bin.fns {
+		names << f.name
+	}
+	mut entry := ''
+	if target == 'main' && 'main' in names {
+		entry = 'main'
+	} else if target == 'main' && 'build' in names {
+		entry = 'build'
+	} else if target in names {
+		entry = target
+	} else {
+		return error('no target function "${target}" in ${file} (available: ${names.join(', ')} or main)')
+	}
+	println('vr make: ${file} [${entry}]')
+	code := vm.run_build(bin, entry, rest, os.abs_path(os.dir(file)))!
+	if code != 0 {
+		return error('target ${entry} finished with exit code ${code}')
+	}
+}
 
 fn toolchain_clean() {
 	mut n := 0

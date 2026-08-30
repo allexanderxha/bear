@@ -1,0 +1,46 @@
+// http.vr — HTTP client (part of the VuurRaaf stdlib).
+//
+//   import http
+//   let res = http.get("https://api.example.com/status")
+//   println(str(res.status))
+//   println(res.body)
+//
+// http.get / http.post return a struct with `status` (int) and `body`
+// (string). Network failures (DNS, refused, timeout) throw, so they can be
+// caught with try/catch; HTTP-level errors (404, 500) are normal responses.
+
+fn get(url) {
+	return http_get(url)
+}
+
+fn post(url, data) {
+	return http_post(url, data)
+}
+
+// get_text returns just the response body as a string.
+fn get_text(url) {
+	return http_get(url).body
+}
+
+// request sends any method with custom headers (a {name: value} struct) and
+// a timeout in milliseconds, and returns {status, body}. A timeout <= 0 uses
+// the default (30s). Network failures throw; HTTP errors are normal responses.
+fn request(method, url, data, headers, timeout_ms) {
+	return http_req(method, url, data, headers, timeout_ms)
+}
+
+fn get_with_headers(url, headers) {
+	return http_req("GET", url, "", headers, 0)
+}
+
+fn post_with_headers(url, data, headers) {
+	return http_req("POST", url, data, headers, 0)
+}
+
+fn get_timeout(url, timeout_ms) {
+	return http_req("GET", url, "", {}, timeout_ms)
+}
+
+fn post_timeout(url, data, timeout_ms) {
+	return http_req("POST", url, data, {}, timeout_ms)
+}

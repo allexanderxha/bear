@@ -1,0 +1,10 @@
+// simple generic test - no type args
+
+fn first[T](arr) {
+    return arr[0]
+}
+
+fn main() {
+    let nums = [10, 20, 30]
+    println(first(nums))
+}

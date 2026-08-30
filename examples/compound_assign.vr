@@ -1,7 +1,7 @@
 // compound assignment operators: +=, -=, *=, /=
 
 fn main() {
-    let x = 10
+    mut x = 10
     println(x)
     
     x += 5

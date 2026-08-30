@@ -15,8 +15,8 @@ fn fib(n) {
 
 // returns n! via a loop
 fn fact(n) {
-	let result = 1
-	let i = 1
+	mut result = 1
+	mut i = 1
 	while i <= n {
 		result = result * i
 		i = i + 1
@@ -54,7 +54,7 @@ fn main() {
 	}
 
 	// while loop
-	let i = 0
+	mut i = 0
 	while i < 3 {
 		println("counting " + i)
 		i = i + 1

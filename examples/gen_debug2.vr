@@ -1,0 +1,11 @@
+// debug: generic function
+
+fn first[T](arr) {
+    return arr[0]
+}
+
+fn main() {
+    let nums = [10, 20, 30]
+    let x = first(nums)
+    println(x)
+}

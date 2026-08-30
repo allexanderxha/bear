@@ -1,0 +1,26 @@
+// generic function syntax (V-style type parameters)
+
+// generic functions: type params are parsed but the VM handles types dynamically
+fn first[T](arr) {
+    return arr[0]
+}
+
+fn last[T](arr) {
+    let n = len(arr)
+    return arr[n - 1]
+}
+
+fn main() {
+    // works with integers
+    let nums = [10, 20, 30]
+    println("first num: ${first[int](nums)}")
+    println("last num: ${last[int](nums)}")
+    
+    // works with strings
+    let words = ["hello", "world", "foo"]
+    println("first word: ${first[string](words)}")
+    println("last word: ${last[string](words)}")
+    
+    // type args are optional (VM is dynamically typed)
+    println("first (no type arg): ${first(nums)}")
+}

@@ -15,6 +15,8 @@ pub fn link(paths []string, out string) ! {
 	mut strings := []string{}
 	mut symbols := map[string]int{}
 	mut relocs := []obj.Reloc{}
+	mut lines := []obj.LineInfo{}
+	mut locals := []obj.DbgLocal{}
 	for p in paths {
 		o := obj.read(p)!
 		base := code.len
@@ -28,6 +30,10 @@ pub fn link(paths []string, out string) ! {
 		for r in o.relocs {
 			relocs << obj.Reloc{ offset: r.offset + u32(base), name: r.name, kind: r.kind }
 		}
+		for l in o.lines {
+			lines << obj.LineInfo{ off: l.off + u32(base), line: l.line }
+		}
+		locals << o.locals
 	}
 	// resolve relocations
 	for r in relocs {
@@ -47,7 +53,7 @@ pub fn link(paths []string, out string) ! {
 	for name, entry in symbols {
 		fns << obj.BinFn{ name: name, entry: entry }
 	}
-	obj.write_bin(out, obj.Bin{ fns: fns, strings: strings, code: code })!
+	obj.write_bin(out, obj.Bin{ fns: fns, strings: strings, code: code, lines: lines, locals: locals })!
 }
 
 fn intern_str(mut table []string, s string) int {

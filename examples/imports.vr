@@ -1,0 +1,44 @@
+// imports.vr — the bundled standard library, imported by name like in V.
+//   vr run examples/imports.vr
+//
+// The toolchain ships lib/*.vr; `import os` resolves against it (and vendor/)
+// from any working directory. Module functions are namespaced: os.exists(),
+// json.encode(), strings.join(), math.clamp().
+
+import os
+import json
+import strings
+import math
+
+fn main() {
+	// --- os: filesystem helpers ---
+	println("cwd: " + os.cwd())
+	println("lib has json.vr: " + str(os.exists("lib/json.vr")))
+	for f in os.list_dir("lib") {
+		println("  lib/" + f)
+	}
+
+	// --- json: encode / decode / pretty ---
+	let user = {
+		name: "amy",
+		age: 30,
+		score: 87.5,
+		tags: ["admin", "beta"],
+		active: 1
+	}
+	println(json.pretty(user))
+
+	let back = json.decode(json.encode(user))
+	println("decoded back: " + back.name + ", " + str(back.age))
+
+	// --- strings: namespaced string API ---
+	println(strings.join(["one", "two", "three"], ", "))
+	println(strings.capitalize("vuurraaf"))
+	println(strings.pad_left("42", 5) + "|")
+	println(strings.repeat("ab", 3))
+
+	// --- math ---
+	println(str(math.clamp(150, 0, 100)))
+	println(str(math.sign(-42)))
+	println(strings.format(math.pi(), "%.4f"))
+}
