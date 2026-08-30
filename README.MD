@@ -27,6 +27,7 @@ v -o bin/vr .        # build the toolchain
 
 ```
 vr compile <file.vr> [-o out.vobj]          source  -> object
+vr check  <file.vr>                          parse + type-check (no codegen)
 vr assemble <file.vasm> [-o out.vobj]       assembly -> object
 vr link <a.vobj> [more.vobj ...] [-o out]   objects -> executable (.vbin)
 vr run <file.vr|file.vbin>                  compile+link+run, or run a binary
@@ -396,7 +397,9 @@ fn main() {
   `continue` advances the loop variable / iterator first)
 - else-if chains: `if a { } else if b { } else { }`
 - `match`: `match expr { v1 { } v2 { } else { } }` — arms test equality on
-  any comparable value (ints, strings, ...); the `else` arm is optional
+  any comparable value (ints, strings, ...); the `else` arm is optional.
+  Range arms `1..10 { }` match when the subject falls within `[lo, hi]`
+  (both ends inclusive); arms are tried top to bottom, first match wins
 - structs: literals `{ name: value, ... }` (may nest and may be empty `{}`),
   field access `a.b` and assignment `a.b = v` (chained: `a[i].b`, `a.b[i]`);
   structs are mutable references (identity `==`/`!=`), and setting a missing
@@ -410,7 +413,7 @@ fn main() {
   and ints widen to `float` fields
 - enums: `enum Color { red green blue }` with `Color.red`, `e.to_string()`,
   `e.count()`, and iteration in `for`
-- constants: `const NAME = 42` (compile-time integer/bool values)
+- constants: `const NAME = 42` (compile-time int/bool/string/float literals)
 - operators: `+ - * / %`, `== != < <= > >=`, `and or not`, `& | ^ ~ << >>`,
   unary `-`; constant expressions fold at compile time
 - statements: `let`/`mut`, assignment, `if/else`, `match`, `while`, `for`,

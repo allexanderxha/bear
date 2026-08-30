@@ -178,8 +178,15 @@ fn repl_is_expr(block string) bool {
 		return false
 	}
 	match toks[0].kind {
-		.kw_print, .kw_println, .kw_if, .kw_while, .kw_for, .kw_match, .kw_break, .kw_continue, .kw_return, .kw_try, .kw_throw {
+		.kw_if, .kw_while, .kw_for, .kw_match, .kw_break, .kw_continue, .kw_return, .kw_try, .kw_throw {
 			return false
+		}
+		.ident {
+			// print/println are statement-like calls, not expressions
+			if toks[0].lit == 'print' || toks[0].lit == 'println' {
+				return false
+			}
+			return true
 		}
 		else {
 			return true

@@ -72,10 +72,16 @@ pub enum StmtKind {
 }
 
 // MatchArm is a single `value { body }` arm of a match statement.
+// A range arm (`1..10 {}` or `1...10 {}`) sets is_range and stores the
+// end bound in range_end; the arm matches when the subject is within the
+// range (inclusive on both ends for `..`, or start..end for `...`).
 pub struct MatchArm {
 pub mut:
-	val  Expr
-	body []Stmt
+	val       Expr
+	body      []Stmt
+	is_range  bool // arm is a range: val..range_end or val...range_end
+	range_end Expr  // the end of the range (only when is_range)
+	inclusive bool   // `..` (inclusive both ends) vs `...` (also inclusive here)
 }
 
 pub struct Stmt {

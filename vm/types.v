@@ -97,6 +97,7 @@ mut:
 	prof_instr []u64          // instructions executed per function index
 	prof_calls []u64          // calls made per function index
 	fn_of_ip   []int          // code offset -> function index (for profiling)
+	fn_entries []FnEntry      // fns sorted by entry (binary search for stack traces)
 	max_ops    i64            // instruction budget; 0 = unlimited (fuzzing safety)
 	ops        i64            // instructions executed so far
 	flags      FlagArgs       // cached getopt parse of prog_args (lazy)

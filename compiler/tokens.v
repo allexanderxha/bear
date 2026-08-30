@@ -61,8 +61,6 @@ pub enum TokKind {
 	kw_and
 	kw_or
 	kw_not
-	kw_print
-	kw_println
 	kw_assert
 	kw_import
 	kw_enum

@@ -33,7 +33,7 @@ mut:
 	enums     map[string][]string    // enum name -> variant list
 	lam_counter int // anonymous function counter
 	enum_vals map[string]int         // 'Enum.variant' -> integer value
-	consts    map[string]i64         // constant name -> integer value
+	consts    map[string]Expr       // constant name -> value expression (int/bool/string/float)
 	lines     []obj.LineInfo         // code offset -> source line (debug info)
 	dbg_locals []obj.DbgLocal        // per-function local name -> stack slot (debugger)
 	local_cnt int
@@ -72,13 +72,17 @@ fn gen(prog Program) !obj.Obj {
 		if cd.name in g.consts {
 			return error('duplicate constant declaration "${cd.name}"')
 		}
-		// constants must be compile-time integer expressions
-		if cd.value.kind == .int_lit {
-			g.consts[cd.name] = cd.value.int_v
-		} else if cd.value.kind == .bool_lit {
-			g.consts[cd.name] = cd.value.int_v
-		} else {
-			return error('constant "${cd.name}" must be an integer or boolean literal (line ${cd.line})')
+		// constants must be compile-time literals: int, bool, string, or float.
+		// The value expression is stored and emitted at each use site, so string
+		// and float constants get the right opcode (op_push_s / op_push_f)
+		// while int/bool constants stay as op_push_i.
+		match cd.value.kind {
+			.int_lit, .bool_lit, .str_lit, .float_lit {
+				g.consts[cd.name] = cd.value
+			}
+			else {
+				return error('constant "${cd.name}" must be an integer, boolean, string, or float literal (line ${cd.line})')
+			}
 		}
 	}
 	// register struct declarations
@@ -397,12 +401,29 @@ fn (mut g Gen) gen_stmt(st Stmt) ! {
 			g.emit_store(subj_idx)
 			for i, arm in st.arms {
 				next_l := g.new_label()
-				g.emit_load(subj_idx)
-				g.gen_expr(arm.val)!
-				g.code << op_eq
-				g.code << op_jz
-				g.code << obj.encode_i64(0)
-				g.fixups << Fixup{ name: next_l, off: u32(g.code.len) - 8 }
+				if arm.is_range {
+					// range arm: `lo..hi {}` matches when lo <= subj <= hi.
+					// Short-circuit: if subj < lo, jump to next; if subj > hi, too.
+					g.emit_load(subj_idx)
+					g.gen_expr(arm.val)!
+					g.code << op_lt
+					g.code << op_jnz
+					g.code << obj.encode_i64(0)
+					g.fixups << Fixup{ name: next_l, off: u32(g.code.len) - 8 }
+					g.emit_load(subj_idx)
+					g.gen_expr(arm.range_end)!
+					g.code << op_gt
+					g.code << op_jnz
+					g.code << obj.encode_i64(0)
+					g.fixups << Fixup{ name: next_l, off: u32(g.code.len) - 8 }
+				} else {
+					g.emit_load(subj_idx)
+					g.gen_expr(arm.val)!
+					g.code << op_eq
+					g.code << op_jz
+					g.code << obj.encode_i64(0)
+					g.fixups << Fixup{ name: next_l, off: u32(g.code.len) - 8 }
+				}
 				for s in arm.body {
 					g.gen_stmt(s)!
 				}
@@ -864,10 +885,28 @@ fn (mut g Gen) gen_expr(e Expr) ! {
 			g.code << op_push_none
 		}
 		.ident {
-			// check if it's a constant
+			// check if it's a constant — emit the right opcode for its literal kind
 			if e.name in g.consts {
-				g.code << op_push_i
-				g.code << obj.encode_i64(g.consts[e.name])
+				cv := g.consts[e.name]
+				match cv.kind {
+					.int_lit, .bool_lit {
+						g.code << op_push_i
+						g.code << obj.encode_i64(cv.int_v)
+					}
+					.str_lit {
+						g.code << op_push_s
+						g.code << obj.encode_i64(0)
+						g.relocs << obj.Reloc{ offset: u32(g.code.len) - 8, name: cv.str_v, kind: 1 }
+					}
+					.float_lit {
+						g.code << op_push_f
+						g.code << obj.encode_f64(cv.float_v)
+					}
+					else {
+						g.code << op_push_i
+						g.code << obj.encode_i64(0)
+					}
+				}
 			} else if e.name in g.enum_vals {
 				// check if it's an enum variant (e.g., Color.red)
 				g.code << op_push_i
@@ -1654,6 +1693,9 @@ fn (mut g Gen) scan_stmt(st Stmt, mut bound map[string]bool, mut caps []string, 
 			g.scan_expr(st.expr, mut bound, mut caps, mut seen)
 			for arm in st.arms {
 				g.scan_expr(arm.val, mut bound, mut caps, mut seen)
+				if arm.is_range {
+					g.scan_expr(arm.range_end, mut bound, mut caps, mut seen)
+				}
 				for s in arm.body {
 					g.scan_stmt(s, mut bound, mut caps, mut seen)
 				}

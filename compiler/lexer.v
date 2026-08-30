@@ -305,8 +305,6 @@ fn (mut l Lexer) lex_ident(line int, col int) Tok {
 		'and' { TokKind.kw_and }
 		'or' { TokKind.kw_or }
 		'not' { TokKind.kw_not }
-		'print' { TokKind.kw_print }
-		'println' { TokKind.kw_println }
 		'assert' { TokKind.kw_assert }
 		'import' { TokKind.kw_import }
 		'enum' { TokKind.kw_enum }

@@ -70,7 +70,7 @@ fn check(prog Program) ! {
 		c.enums[ed.name] = ed.variants
 	}
 	for cd in prog.consts {
-		c.consts[cd.name] = TypeInfo{ kind: .int_t }
+		c.consts[cd.name] = const_type(cd.value, cd.name, cd.line)!
 	}
 	for fd in prog.fns {
 		if fd.name in c.fns {
@@ -223,7 +223,7 @@ fn (mut c Checker) check_import(path string, mod_name string) ! {
 	}
 	for cd in prog.consts {
 		if cd.name !in c.consts {
-			c.consts[cd.name] = TypeInfo{ kind: .int_t }
+			c.consts[cd.name] = const_type(cd.value, cd.name, cd.line)!
 		}
 	}
 	for fd in prog.fns {
@@ -326,6 +326,9 @@ fn (mut c Checker) check_stmt(st Stmt) ! {
 			_ = c.check_expr(st.expr)!
 			for arm in st.arms {
 				_ = c.check_expr(arm.val)!
+				if arm.is_range {
+					_ = c.check_expr(arm.range_end)!
+				}
 				for s in arm.body {
 					c.check_stmt(s)!
 				}
@@ -837,5 +840,18 @@ fn (mut c Checker) expect_container(t TypeInfo, what string, line int) ! {
 fn (mut c Checker) expect_struct_like(t TypeInfo, what string, line int) ! {
 	if t.kind == .int_t || t.kind == .float_t || t.kind == .bool_t || t.kind == .string_t || t.kind == .none_t || t.kind == .closure_t {
 		return error('${what} on a ${type_name(t.kind)} (line ${line})')
+	}
+}
+
+// const_type maps a constant's literal expression to its checker TypeInfo.
+// Constants may be int, bool, string, or float literals; anything else is a
+// compile-time error (constants must be evaluable at compile time).
+fn const_type(e Expr, name string, line int) !TypeInfo {
+	return match e.kind {
+		.int_lit { TypeInfo{ kind: .int_t } }
+		.bool_lit { TypeInfo{ kind: .bool_t } }
+		.str_lit { TypeInfo{ kind: .string_t } }
+		.float_lit { TypeInfo{ kind: .float_t } }
+		else { return error('constant "${name}" must be an integer, boolean, string, or float literal (line ${line})') }
 	}
 }

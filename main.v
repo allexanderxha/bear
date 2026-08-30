@@ -52,6 +52,9 @@ fn main() {
 		'compile', 'c' {
 			toolchain_compile(rest) or { die('compile', err) }
 		}
+		'check', 'chk' {
+			toolchain_check(rest) or { die('check', err) }
+		}
 		'assemble', 'a' {
 			toolchain_assemble(rest) or { die('assemble', err) }
 		}
@@ -192,6 +195,7 @@ fn toolchain_help() {
 	println('usage: vr <command> [args]')
 	println('')
 	println('  compile <file.vr> [-o out.vobj]          compile source to an object file')
+	println('  check <file.vr>                          parse and type-check (no codegen)')
 	println('  assemble <file.vasm> [-o out.vobj]       assemble raw bytecode to an object file')
 	println('  link <a.vobj> [more.vobj ...] [-o out]   link objects into an executable')
 	println('  run <file.vr|file.vbin>                  compile, link and run (or run a binary)')
@@ -319,6 +323,17 @@ fn toolchain_compile(args []string) ! {
 	}
 	obj.write(out, o)!
 	println('compiled ${src} -> ${out} (${o.code.len} bytes code, ${o.symbols.len} symbols, ${o.relocs.len} relocations)')
+}
+
+// toolchain_check parses and type-checks a source file without generating
+// code or writing any artifacts — the fast lint path for editors and CI.
+fn toolchain_check(args []string) ! {
+	if args.len == 0 {
+		return error('usage: vr check <file.vr>')
+	}
+	src := args[0]
+	compiler.check_file(src)!
+	println('checked ${src} — no errors')
 }
 
 fn toolchain_assemble(args []string) ! {

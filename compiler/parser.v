@@ -384,6 +384,16 @@ fn (mut p Parser) parse_stmt() !Stmt {
 					continue
 				}
 				val := p.parse_expr()!
+				// range arm: `1..10 {}` or `1...10 {}` — matches when the subject
+				// falls within [start, end] (both ends inclusive)
+				if p.cur().kind == .dotdot || p.cur().kind == .dotdotdot {
+					inclusive := p.cur().kind == .dotdotdot
+					p.advance()
+					end := p.parse_expr()!
+					body := p.parse_block()!
+					arms << MatchArm{ val: val, body: body, is_range: true, range_end: end, inclusive: inclusive }
+					continue
+				}
 				body := p.parse_block()!
 				arms << MatchArm{ val: val, body: body }
 			}
@@ -528,11 +538,6 @@ fn (mut p Parser) parse_stmt() !Stmt {
 			}
 		}
 		return Stmt{ kind: .expr_stmt, expr: e, line: t.line }
-		}
-		.kw_print, .kw_println {
-			p.advance()
-			e := p.parse_call(t, [])!
-			return Stmt{ kind: .expr_stmt, expr: e, line: t.line }
 		}
 		else {
 			return error('unexpected token "${t.lit}" at line ${t.line}, col ${t.col}')
@@ -856,10 +861,6 @@ fn (mut p Parser) parse_primary() !Expr {
 				return Expr{ kind: .struct_lit, name: t.lit, fields: fields, line: t.line }
 			}
 			return p.parse_call_or_ident(t)!
-		}
-		.kw_print, .kw_println {
-			p.advance()
-			return p.parse_call(t, [])!
 		}
 		.kw_fn {
 			// anonymous function expression: fn(params) { body }

@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "name": "vuurraaf-v",
+  "color": "",
+  "dockState": {
+    "zones": {
+      "left": {
+        "position": "left",
+        "visible": false,
+        "size": 260,
+        "layout": null
+      },
+      "right": {
+        "position": "right",
+        "visible": false,
+        "size": 260,
+        "layout": null
+      },
+      "bottom": {
+        "position": "bottom",
+        "visible": false,
+        "size": 240,
+        "layout": null
+      },
+      "center": {
+        "position": "center",
+        "visible": true,
+        "size": 0,
+        "layout": {
+          "type": "tabs",
+          "id": "c576781b-e784-4f1b-ad40-17e7cf280965",
+          "panelIds": [
+            "20d732c1-52c7-4191-aaa4-ceb972d5d1f5"
+          ],
+          "activeIndex": 0
+        }
+      }
+    },
+    "locations": {
+      "20d732c1-52c7-4191-aaa4-ceb972d5d1f5": {
+        "type": "dock",
+        "zone": "center",
+        "stackId": "c576781b-e784-4f1b-ad40-17e7cf280965"
+      }
+    }
+  },
+  "panels": {
+    "3237e890-e0f5-4d9d-8ab4-28604d20c9ce": {
+      "type": "terminal",
+      "title": "amlicense@amlicenses-Mac-mini:/Volumes/DA/vuurraaf/vuurraaf/vuurraaf-v"
+    },
+    "06761eec-6e71-4595-89f9-2cf92fa94dd2": {
+      "type": "notes",
+      "title": "Notes"
+    },
+    "1807e582-c9fa-429e-acab-a0100fff856e": {
+      "type": "notes",
+      "title": "Notes"
+    },
+    "357b0dd3-7827-4366-8b8a-ac12057a4b7f": {
+      "type": "drawing",
+      "title": "Drawing",
+      "drawings": []
+    },
+    "23c44043-0cd2-4f07-b7b6-778ca02c5e45": {
+      "type": "clock",
+      "title": "Clock"
+    },
+    "e64e05df-7e9b-4873-903d-285637714266": {
+      "type": "stopwatch",
+      "title": "Stopwatch"
+    },
+    "c793cd87-b877-496f-bb0c-7a4154cadbcb": {
+      "type": "timer",
+      "title": "Timer"
+    },
+    "20d732c1-52c7-4191-aaa4-ceb972d5d1f5": {
+      "type": "canvas",
+      "title": "Canvas"
+    }
+  },
+  "canvases": {
+    "20d732c1-52c7-4191-aaa4-ceb972d5d1f5": {
+      "id": "20d732c1-52c7-4191-aaa4-ceb972d5d1f5",
+      "canvasNodes": {
+        "12882d51-691d-45b6-8cb7-0b7ad7c35051": {
+          "id": "12882d51-691d-45b6-8cb7-0b7ad7c35051",
+          "panelId": "3237e890-e0f5-4d9d-8ab4-28604d20c9ce",
+          "origin": {
+            "x": 330,
+            "y": 149.5
+          },
+          "size": {
+            "width": 884,
+            "height": 591.6285410344973
+          },
+          "zOrder": 21,
+          "creationIndex": 0,
+          "animationState": "idle",
+          "dockLayout": {
+            "type": "tabs",
+            "id": "a53d0a9c-9f1e-4960-9f63-3359b49bf0a5",
+            "panelIds": [
+              "3237e890-e0f5-4d9d-8ab4-28604d20c9ce"
+            ],
+            "activeIndex": 0
+          }
+        },
+        "75708518-fd08-4d5d-a16e-99f5c70d29e3": {
+          "id": "75708518-fd08-4d5d-a16e-99f5c70d29e3",
+          "panelId": "06761eec-6e71-4595-89f9-2cf92fa94dd2",
+          "origin": {
+            "x": -42.332120879697484,
+            "y": 153.73857913487356
+          },
+          "size": {
+            "width": 320,
+            "height": 280
+          },
+          "zOrder": 4,
+          "creationIndex": 1,
+          "animationState": "idle",
+          "dockLayout": {
+            "type": "tabs",
+            "id": "69879bf1-322a-47da-94e2-1619bf397d32",
+            "panelIds": [
+              "06761eec-6e71-4595-89f9-2cf92fa94dd2"
+            ],
+            "activeIndex": 0
+          }
+        },
+        "fa656786-c9f2-47ef-9a9a-504f05064bf5": {
+          "id": "fa656786-c9f2-47ef-9a9a-504f05064bf5",
+          "panelId": "1807e582-c9fa-429e-acab-a0100fff856e",
+          "origin": {
+            "x": -44.03483322757677,
+            "y": 462.24673379866226
+          },
+          "size": {
+            "width": 320,
+            "height": 280
+          },
+          "zOrder": 6,
+          "creationIndex": 2,
+          "animationState": "idle",
+          "dockLayout": {
+            "type": "tabs",
+            "id": "41227ec6-b6bc-4afc-8a1e-8b5b703cd0c1",
+            "panelIds": [
+              "1807e582-c9fa-429e-acab-a0100fff856e"
+            ],
+            "activeIndex": 0
+          }
+        },
+        "21a156b6-fdd7-441b-81b8-459c1ab100b4": {
+          "id": "21a156b6-fdd7-441b-81b8-459c1ab100b4",
+          "panelId": "357b0dd3-7827-4366-8b8a-ac12057a4b7f",
+          "origin": {
+            "x": -62.45296105863383,
+            "y": 748.9089531355334
+          },
+          "size": {
+            "width": 1755.6182385085954,
+            "height": 520
+          },
+          "zOrder": 12,
+          "creationIndex": 3,
+          "animationState": "idle",
+          "dockLayout": {
+            "type": "tabs",
+            "id": "3de37036-82ac-4536-ad1e-e2c29d351387",
+            "panelIds": [
+              "357b0dd3-7827-4366-8b8a-ac12057a4b7f"
+            ],
+            "activeIndex": 0
+          }
+        },
+        "7dffc836-6384-4346-a1f9-ba2e53715ac2": {
+          "id": "7dffc836-6384-4346-a1f9-ba2e53715ac2",
+          "panelId": "23c44043-0cd2-4f07-b7b6-778ca02c5e45",
+          "origin": {
+            "x": 1240,
+            "y": 143.26091872647305
+          },
+          "size": {
+            "width": 435.13880823671116,
+            "height": 589.753193140007
+          },
+          "zOrder": 11,
+          "creationIndex": 4,
+          "animationState": "idle",
+          "dockLayout": {
+            "type": "tabs",
+            "id": "8c768fd7-5f18-49aa-913b-22089ecc5123",
+            "panelIds": [
+              "23c44043-0cd2-4f07-b7b6-778ca02c5e45"
+            ],
+            "activeIndex": 0
+          }
+        },
+        "5e0402ca-9ae6-43c3-886c-0a422ae2d50e": {
+          "id": "5e0402ca-9ae6-43c3-886c-0a422ae2d50e",
+          "panelId": "e64e05df-7e9b-4873-903d-285637714266",
+          "origin": {
+            "x": 1700.080467727776,
+            "y": 140.8851450055359
+          },
+          "size": {
+            "width": 300,
+            "height": 180
+          },
+          "zOrder": 17,
+          "creationIndex": 6,
+          "animationState": "idle",
+          "dockLayout": {
+            "type": "tabs",
+            "id": "d33999b6-03d5-4abe-b899-c2a25b52d9b0",
+            "panelIds": [
+              "e64e05df-7e9b-4873-903d-285637714266"
+            ],
+            "activeIndex": 0
+          }
+        },
+        "ecb47430-986b-4558-a793-2d6607f5c9f1": {
+          "id": "ecb47430-986b-4558-a793-2d6607f5c9f1",
+          "panelId": "c793cd87-b877-496f-bb0c-7a4154cadbcb",
+          "origin": {
+            "x": 1700.31419465494,
+            "y": 336.5271798629927
+          },
+          "size": {
+            "width": 300,
+            "height": 397.9924899949168
+          },
+          "zOrder": 23,
+          "creationIndex": 7,
+          "animationState": "idle",
+          "dockLayout": {
+            "type": "tabs",
+            "id": "ac02344c-3822-4c71-9a50-6883dcd7f54d",
+            "panelIds": [
+              "c793cd87-b877-496f-bb0c-7a4154cadbcb"
+            ],
+            "activeIndex": 0
+          }
+        }
+      },
+      "zoomLevel": 0.6879846842737213,
+      "viewportOffset": {
+        "x": 103.68566734671344,
+        "y": 57.50025644179712
+      },
+      "drawings": [],
+      "regions": []
+    }
+  }
+}

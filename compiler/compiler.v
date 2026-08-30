@@ -17,6 +17,17 @@ pub fn compile(src string) !obj.Obj {
 	return gen(prog)
 }
 
+// check_file parses and type-checks a source file without generating code or
+// writing any artifacts. It is the fast lint path used by `vr check` and by
+// editors that want a quick pass without touching the filesystem.
+pub fn check_file(path string) ! {
+	src := os.read_file(path)!
+	toks := tokenize(src)!
+	prog := parse(toks)!
+	check(prog)!
+}
+
+
 pub fn compile_file(path string) !obj.Obj {
 	src := os.read_file(path)!
 	return compile(src)!

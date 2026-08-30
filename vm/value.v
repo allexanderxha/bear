@@ -1,12 +1,22 @@
 // value.v — tagged value encoding and helpers for the VuurRaaf VM.
 //
 // Stack values are 64-bit tagged integers with three tag bits:
-//   low bits 000 -> encoded integer (value = raw << 3)
+//   low bits 000 -> encoded integer (value = raw << 3, so 61-bit range)
 //   low bits 001 -> string handle   (handle = value >> 3, into v.strings)
 //   low bits 010 -> struct handle   (handle = value >> 3, into v.structs)
 //   low bits 011 -> array handle    (handle = value >> 3, into v.arrays)
 //   low bits 100 -> float handle    (handle = value >> 3, into v.floats)
+//
+// Integers use 3 tag bits, so only 61 bits carry the value. Values that
+// do not fit (|x| >= 2^60) are silently promoted to a float handle by
+// enc_int, so arithmetic on large numbers stays correct (as floats) instead
+// of corrupting the tag bits.
 module vm
+
+// int_max is the largest integer that fits in the 61-bit payload. Larger
+// magnitudes are promoted to floats by enc_int.
+pub const int_max = i64(1) << 60
+pub const int_min = -(i64(1) << 60)
 
 const tag_mask = u64(7)
 const tag_int = u64(0)
@@ -64,7 +74,13 @@ fn (mut v Vm) is_num(x i64) bool {
 	return u64(x) & tag_mask == tag_int
 }
 
+// enc_int encodes an integer into a tagged value. Values whose magnitude
+// exceeds the 61-bit payload are promoted to a float handle (transparently to
+// callers) so the tag bits are never corrupted by an oversized integer.
 fn (mut v Vm) enc_int(x i64) i64 {
+	if x > int_max || x < int_min {
+		return v.push_float(f64(x))
+	}
 	return i64(u64(x) << 3)
 }
 

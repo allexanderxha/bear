@@ -110,6 +110,19 @@ fn new_vm(bin obj.Bin, entry string, opts RunOpts) !Vm {
 		dbg_locals: bin.locals
 		max_ops:    opts.max_ops
 	}
+	// build a by-entry-sorted view of the function table for O(log n)
+	// lookups in func_at (stack traces). Only needed when there are fns,
+	// but it's cheap and simplifies the lookup path.
+	if v.fns.len > 0 {
+		mut fes := []FnEntry{len: v.fns.len}
+		for i, f in v.fns {
+			fes[i] = FnEntry{ idx: i, entry: f.entry }
+		}
+		fes.sort_with_compare(fn (a &FnEntry, b &FnEntry) int {
+			return a.entry - b.entry
+		})
+		v.fn_entries = fes
+	}
 	if opts.profile {
 		v.profiling = true
 		v.prof_instr = []u64{len: v.fns.len}
@@ -190,28 +203,51 @@ fn (v Vm) where() string {
 }
 
 // line_at maps a code offset to its source line via the line table.
+// The table is in ascending code-offset order, so a binary search finds the
+// last entry at or before `ip` in O(log n) instead of a linear scan.
 fn (v Vm) line_at(ip int) int {
-	// line table entries are recorded in code order, so walk backwards from
-	// the most recent entry to find the last one at or before ip
-	for i := v.lines.len - 1; i >= 0; i-- {
-		if ip >= int(v.lines[i].off) {
-			return v.lines[i].line
+	n := v.lines.len
+	if n == 0 {
+		return 0
+	}
+	// fast path: the table is almost always queried in ascending ip order
+	// (error reporting walks frames), so check the last entry first.
+	if ip >= int(v.lines[n - 1].off) {
+		return v.lines[n - 1].line
+	}
+	mut lo := 0
+	mut hi := n - 1
+	// find the rightmost entry with off <= ip
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if int(v.lines[mid].off) <= ip {
+			lo = mid
+		} else {
+			hi = mid - 1
 		}
 	}
-	return 0
+	return v.lines[lo].line
 }
 
 // func_at returns the name of the function whose body contains the given
-// code offset. Functions are laid out sequentially, so the enclosing
-// function is the one with the greatest entry point <= ip.
+// code offset. Uses a binary search over the by-entry-sorted function table
+// (built once in new_vm) for O(log n) lookup instead of a linear scan.
 fn (v Vm) func_at(ip int) string {
-	mut name := '?'
-	for f in v.fns {
-		if f.entry <= ip {
-			name = f.name
+	if v.fn_entries.len == 0 {
+		return '?'
+	}
+	mut lo := 0
+	mut hi := v.fn_entries.len - 1
+	// find the rightmost entry with entry <= ip
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if v.fn_entries[mid].entry <= ip {
+			lo = mid
+		} else {
+			hi = mid - 1
 		}
 	}
-	return name
+	return v.fns[v.fn_entries[lo].idx].name
 }
 
 // stack_trace renders the call chain at the moment an error is raised, from
@@ -485,24 +521,27 @@ fn (mut v Vm) exec() ! {
 					} else {
 						return error('no field "${fname}" on struct')
 					}
-				} else {
-					idx := int(v.dec_int(idxv))
-					if v.is_arr(h) && v.valid_arr_handle(h) {
-						a := v.arrays[v.hand(h)]
-						if idx < 0 || idx >= a.len {
-							return error('array index ${idx} out of bounds (len ${a.len})')
+				} else {						idx := int(v.dec_int(idxv))
+						if v.is_arr(h) && v.valid_arr_handle(h) {
+							a := v.arrays[v.hand(h)]
+							// negative index counts from the end: a[-1] is the last element
+							nidx := if idx < 0 { idx + a.len } else { idx }
+							if nidx < 0 || nidx >= a.len {
+								return error('array index ${idx} out of bounds (len ${a.len})')
+							}
+							v.push(a[nidx])!
+						} else if v.is_str(h) && v.valid_handle(h) {
+							// rune-based string indexing: s[i] is the i-th character;
+							// negative indexes count from the end (s[-1] is the last rune)
+							runes := v.strings[v.hand(h)].runes()
+							nidx := if idx < 0 { idx + runes.len } else { idx }
+							if nidx < 0 || nidx >= runes.len {
+								return error('string index ${idx} out of bounds (len ${runes.len})')
+							}
+							v.push(v.alloc_str(runes[nidx].str()))!
+						} else {
+							return error('indexing a non-array, non-string value')
 						}
-						v.push(a[idx])!
-					} else if v.is_str(h) && v.valid_handle(h) {
-						// rune-based string indexing: s[i] is the i-th character
-						runes := v.strings[v.hand(h)].runes()
-						if idx < 0 || idx >= runes.len {
-							return error('string index ${idx} out of bounds (len ${runes.len})')
-						}
-						v.push(v.alloc_str(runes[idx].str()))!
-					} else {
-						return error('indexing a non-array, non-string value')
-					}
 				}
 			}
 			op_aset {
@@ -528,10 +567,13 @@ fn (mut v Vm) exec() ! {
 					if !v.is_arr(h) || !v.valid_arr_handle(h) {
 						return error('indexing a non-array value')
 					}
-					if idx < 0 || idx >= v.arrays[v.hand(h)].len {
-						return error('array index ${idx} out of bounds (len ${v.arrays[v.hand(h)].len})')
+					alen := v.arrays[v.hand(h)].len
+					// negative index counts from the end: a[-1] = last element
+					nidx := if idx < 0 { idx + alen } else { idx }
+					if nidx < 0 || nidx >= alen {
+						return error('array index ${idx} out of bounds (len ${alen})')
 					}
-					v.arrays[v.hand(h)][idx] = val
+					v.arrays[v.hand(h)][nidx] = val
 				}
 			}
 			op_alen {

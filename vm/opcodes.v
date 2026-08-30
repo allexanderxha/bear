@@ -1,197 +1,180 @@
 // opcodes.v — bytecode opcodes for the VuurRaaf VM.
 //
-// Keep in sync with the compiler and assembler.
+// Opcode and native-builtin IDs are defined once in compiler/opcodes.v and
+// re-exported here as unqualified constants, so the VM, compiler, and
+// assembler all share a single source of truth. Drift between the two tables
+// (the old duplication) is now impossible by construction.
 module vm
 
-const op_halt = u8(0)
-const op_push_i = u8(1)
-const op_push_s = u8(2)
-const op_load = u8(3)
-const op_store = u8(4)
-const op_pop = u8(5)
-const op_dup = u8(6)
-const op_add = u8(7)
-const op_sub = u8(8)
-const op_mul = u8(9)
-const op_div = u8(10)
-const op_mod = u8(11)
-const op_neg = u8(12)
-const op_eq = u8(13)
-const op_ne = u8(14)
-const op_lt = u8(15)
-const op_le = u8(16)
-const op_gt = u8(17)
-const op_ge = u8(18)
-const op_and = u8(19)
-const op_or = u8(20)
-const op_not = u8(21)
-const op_jmp = u8(22)
-const op_jz = u8(23)
-const op_jnz = u8(24)
-const op_call = u8(25)
-const op_ret = u8(26)
-const op_retv = u8(27)
-const op_print = u8(28)
-const op_println = u8(29)
-const op_assert = u8(30)
-const op_enter = u8(31)
-const op_mkarray = u8(32)
-const op_aget = u8(33)
-const op_aset = u8(34)
-const op_alen = u8(35)
-const op_apush = u8(36)
-const op_mkstruct = u8(37)
-const op_sget = u8(38)
-const op_sset = u8(39)
-const op_shas = u8(40) // has(map, "key") -> 1 if key exists, 0 otherwise
-const op_sdel = u8(41) // delete(map, "key") -> removes the key
-const op_slen = u8(42) // slen(struct) -> number of fields
-const op_skeys = u8(43) // skeys(struct) -> array of field name strings
-const op_slice = u8(44) // slice(arr/str, start, end) -> sliced arr/str
-const op_push_f = u8(45) // push a float literal (8-byte little-endian f64)
-const op_native = u8(46) // call a host builtin: <id:i64> <argc:i64>
-const op_and_b = u8(47) // bitwise AND
-const op_or_b = u8(48) // bitwise OR
-const op_xor = u8(49) // bitwise XOR
-const op_shl = u8(50) // shift left
-const op_shr = u8(51) // shift right
-const op_not_b = u8(52) // bitwise NOT
-const op_try = u8(53) // push handler: <catch_ip:i64>
-const op_throw = u8(54) // throw: pop error, unwind to nearest handler, push error
-const op_catch_done = u8(55) // pop handler (normal completion)
-const op_closure = u8(56) // push closure: <entry:i64>
-const op_call_closure = u8(57) // call closure: <argc:i64>
-const op_argc = u8(58) // push the current frame's arg count
-const op_load_dyn = u8(59) // pop idx, push stack[bp + idx]
-const op_varargs = u8(60) // <named:i64> <dst:i64> — collect args[named..argc-1] into array at local dst
-const op_str_method = u8(61) // <name:str> <argc:i64> — call a string method (s.len(), s.contains(x), ...)
-const op_push_none = u8(62) // push the `none` sentinel
-const op_in = u8(63) // membership: x in col -> 0 or 1
+import compiler
 
-// native builtin ids (the operand to op_native)
-const native_abs = 100
-const native_min = 101
-const native_max = 102
-const native_pow = 103
-const native_sqrt = 104
-const native_floor = 105
-const native_ceil = 106
-const native_round = 107
-const native_rand = 108
-const native_rand_int = 109
-const native_int = 110
-const native_str = 111
-const native_float = 112
-const native_type = 113
-const native_split = 114
-const native_join = 115
-const native_contains = 116
-const native_starts_with = 117
-const native_ends_with = 118
-const native_trim = 119
-const native_lower = 120
-const native_upper = 121
-const native_pop = 122
-const native_insert = 123
-const native_remove = 124
-const native_sort = 125
-const native_clone = 126
-const native_reverse = 127
-const native_index_of = 128
-const native_args = 129
-const native_getenv = 130
-const native_setenv = 131
-const native_exit = 132
-const native_time = 133
-const native_sleep = 134
-const native_read_file = 135
-const native_write_file = 136
-const native_eprint = 137
+// Bytecode opcodes — see compiler/opcodes.v for the authoritative list.
+pub const op_halt         = compiler.op_halt
+pub const op_push_i       = compiler.op_push_i
+pub const op_push_s       = compiler.op_push_s
+pub const op_load          = compiler.op_load
+pub const op_store         = compiler.op_store
+pub const op_pop           = compiler.op_pop
+pub const op_dup           = compiler.op_dup
+pub const op_add           = compiler.op_add
+pub const op_sub           = compiler.op_sub
+pub const op_mul           = compiler.op_mul
+pub const op_div           = compiler.op_div
+pub const op_mod           = compiler.op_mod
+pub const op_neg           = compiler.op_neg
+pub const op_eq            = compiler.op_eq
+pub const op_ne            = compiler.op_ne
+pub const op_lt            = compiler.op_lt
+pub const op_le            = compiler.op_le
+pub const op_gt            = compiler.op_gt
+pub const op_ge            = compiler.op_ge
+pub const op_and           = compiler.op_and
+pub const op_or            = compiler.op_or
+pub const op_not           = compiler.op_not
+pub const op_jmp           = compiler.op_jmp
+pub const op_jz            = compiler.op_jz
+pub const op_jnz           = compiler.op_jnz
+pub const op_call          = compiler.op_call
+pub const op_ret           = compiler.op_ret
+pub const op_retv          = compiler.op_retv
+pub const op_print         = compiler.op_print
+pub const op_println       = compiler.op_println
+pub const op_assert        = compiler.op_assert
+pub const op_enter         = compiler.op_enter
+pub const op_mkarray       = compiler.op_mkarray
+pub const op_aget          = compiler.op_aget
+pub const op_aset          = compiler.op_aset
+pub const op_alen          = compiler.op_alen
+pub const op_apush         = compiler.op_apush
+pub const op_mkstruct      = compiler.op_mkstruct
+pub const op_sget          = compiler.op_sget
+pub const op_sset          = compiler.op_sset
+pub const op_shas          = compiler.op_shas
+pub const op_sdel          = compiler.op_sdel
+pub const op_slen          = compiler.op_slen
+pub const op_skeys         = compiler.op_skeys
+pub const op_slice         = compiler.op_slice
+pub const op_push_f        = compiler.op_push_f
+pub const op_native        = compiler.op_native
+pub const op_and_b         = compiler.op_and_b
+pub const op_or_b          = compiler.op_or_b
+pub const op_xor           = compiler.op_xor
+pub const op_shl           = compiler.op_shl
+pub const op_shr           = compiler.op_shr
+pub const op_not_b         = compiler.op_not_b
+pub const op_try           = compiler.op_try
+pub const op_throw         = compiler.op_throw
+pub const op_catch_done    = compiler.op_catch_done
+pub const op_closure       = compiler.op_closure
+pub const op_call_closure  = compiler.op_call_closure
+pub const op_argc          = compiler.op_argc
+pub const op_load_dyn      = compiler.op_load_dyn
+pub const op_varargs       = compiler.op_varargs
+pub const op_str_method    = compiler.op_str_method
+pub const op_push_none     = compiler.op_push_none
+pub const op_in            = compiler.op_in
 
-// build-module builtins (.vrmm) — driven by `vr make`
-const native_build_compile = 138
-const native_build_assemble = 139
-const native_build_link = 140
-const native_build_run = 141
-const native_build_test = 142
-const native_build_bench = 143
-const native_build_clean = 144
-const native_build_exec = 145
-const native_build_exec_status = 146
-const native_build_exists = 147
-const native_build_mkdir = 148
-const native_build_rm = 149
-const native_build_copy = 150
-const native_build_glob = 151
-const native_build_ls = 152
-const native_build_base = 153
-const native_build_dir = 154
-const native_build_join = 155
-const native_build_root = 156
-
-// stdlib builtins (JSON + string formatting)
-const native_json_encode = 157
-const native_json_decode = 158
-const native_format = 159
-const native_replace = 160
-const native_split_lines = 161
-const native_pad = 162
-const native_pad_left = 163
-const native_repeat = 164
-const native_build_is_dir = 165
-const native_cwd = 166
-const native_json_pretty = 167
-
-// HTTP client builtins
-const native_http_get = 168
-const native_http_post = 169
-
-// date/time builtins
-const native_now = 170
-const native_time_ms = 171
-const native_format_time = 172
-const native_parse_time = 173
-
-// regex builtins
-const native_regex_match = 174
-const native_regex_find_all = 175
-const native_regex_replace = 176
-const native_regex_split = 177
-
-// crypto/encoding builtins
-const native_base64_encode = 178
-const native_base64_decode = 179
-const native_sha256 = 180
-const native_md5 = 181
-const native_csv_parse = 182
-
-// extended HTTP + filesystem/process builtins
-const native_http_req = 183
-const native_path_ext = 184
-const native_path_abs = 185
-const native_path_rel = 186
-const native_exec_full = 187
-const native_weekday = 188
-
-// string builder (efficient repeated concatenation)
-const native_sb_new = 189
-const native_sb_add = 190
-const native_sb_str = 191
-const native_sb_len = 192
-
-// concurrency: spawn/join threads
-const native_spawn = 193
-const native_spawn_join = 194
-
-// interactive input: read a line from stdin
-const native_read_line = 195
-const native_input = 196
-
-// getopt-style flag parsing over args()
-const native_flag_val = 197
-const native_flag_has = 198
-const native_flag_positional = 199
-
-// structured reflection + sequence helper
-const native_type_info = 200
-const native_range = 201
+// Native builtin IDs — the operand to op_native. Single source of truth in
+// compiler/opcodes.v; re-exported here for the VM's dispatch table.
+pub const native_abs              = compiler.native_abs
+pub const native_min              = compiler.native_min
+pub const native_max              = compiler.native_max
+pub const native_pow              = compiler.native_pow
+pub const native_sqrt             = compiler.native_sqrt
+pub const native_floor            = compiler.native_floor
+pub const native_ceil             = compiler.native_ceil
+pub const native_round            = compiler.native_round
+pub const native_rand             = compiler.native_rand
+pub const native_rand_int         = compiler.native_rand_int
+pub const native_int              = compiler.native_int
+pub const native_str              = compiler.native_str
+pub const native_float            = compiler.native_float
+pub const native_type             = compiler.native_type
+pub const native_split            = compiler.native_split
+pub const native_join             = compiler.native_join
+pub const native_contains         = compiler.native_contains
+pub const native_starts_with      = compiler.native_starts_with
+pub const native_ends_with        = compiler.native_ends_with
+pub const native_trim             = compiler.native_trim
+pub const native_lower            = compiler.native_lower
+pub const native_upper            = compiler.native_upper
+pub const native_pop              = compiler.native_pop
+pub const native_insert           = compiler.native_insert
+pub const native_remove           = compiler.native_remove
+pub const native_sort             = compiler.native_sort
+pub const native_clone            = compiler.native_clone
+pub const native_reverse          = compiler.native_reverse
+pub const native_index_of         = compiler.native_index_of
+pub const native_args             = compiler.native_args
+pub const native_getenv           = compiler.native_getenv
+pub const native_setenv           = compiler.native_setenv
+pub const native_exit             = compiler.native_exit
+pub const native_time             = compiler.native_time
+pub const native_sleep            = compiler.native_sleep
+pub const native_read_file        = compiler.native_read_file
+pub const native_write_file       = compiler.native_write_file
+pub const native_eprint           = compiler.native_eprint
+pub const native_build_compile    = compiler.native_build_compile
+pub const native_build_assemble   = compiler.native_build_assemble
+pub const native_build_link       = compiler.native_build_link
+pub const native_build_run        = compiler.native_build_run
+pub const native_build_test       = compiler.native_build_test
+pub const native_build_bench      = compiler.native_build_bench
+pub const native_build_clean      = compiler.native_build_clean
+pub const native_build_exec       = compiler.native_build_exec
+pub const native_build_exec_status = compiler.native_build_exec_status
+pub const native_build_exists     = compiler.native_build_exists
+pub const native_build_mkdir      = compiler.native_build_mkdir
+pub const native_build_rm         = compiler.native_build_rm
+pub const native_build_copy       = compiler.native_build_copy
+pub const native_build_glob       = compiler.native_build_glob
+pub const native_build_ls         = compiler.native_build_ls
+pub const native_build_base       = compiler.native_build_base
+pub const native_build_dir        = compiler.native_build_dir
+pub const native_build_join       = compiler.native_build_join
+pub const native_build_root       = compiler.native_build_root
+pub const native_json_encode      = compiler.native_json_encode
+pub const native_json_decode      = compiler.native_json_decode
+pub const native_format           = compiler.native_format
+pub const native_replace          = compiler.native_replace
+pub const native_split_lines     = compiler.native_split_lines
+pub const native_pad              = compiler.native_pad
+pub const native_pad_left         = compiler.native_pad_left
+pub const native_repeat           = compiler.native_repeat
+pub const native_build_is_dir     = compiler.native_build_is_dir
+pub const native_cwd              = compiler.native_cwd
+pub const native_json_pretty      = compiler.native_json_pretty
+pub const native_http_get         = compiler.native_http_get
+pub const native_http_post       = compiler.native_http_post
+pub const native_now              = compiler.native_now
+pub const native_time_ms          = compiler.native_time_ms
+pub const native_format_time      = compiler.native_format_time
+pub const native_parse_time       = compiler.native_parse_time
+pub const native_regex_match      = compiler.native_regex_match
+pub const native_regex_find_all   = compiler.native_regex_find_all
+pub const native_regex_replace    = compiler.native_regex_replace
+pub const native_regex_split      = compiler.native_regex_split
+pub const native_base64_encode    = compiler.native_base64_encode
+pub const native_base64_decode    = compiler.native_base64_decode
+pub const native_sha256           = compiler.native_sha256
+pub const native_md5              = compiler.native_md5
+pub const native_csv_parse        = compiler.native_csv_parse
+pub const native_http_req        = compiler.native_http_req
+pub const native_path_ext         = compiler.native_path_ext
+pub const native_path_abs         = compiler.native_path_abs
+pub const native_path_rel         = compiler.native_path_rel
+pub const native_exec_full       = compiler.native_exec_full
+pub const native_weekday          = compiler.native_weekday
+pub const native_sb_new           = compiler.native_sb_new
+pub const native_sb_add           = compiler.native_sb_add
+pub const native_sb_str           = compiler.native_sb_str
+pub const native_sb_len           = compiler.native_sb_len
+pub const native_spawn            = compiler.native_spawn
+pub const native_spawn_join       = compiler.native_spawn_join
+pub const native_read_line        = compiler.native_read_line
+pub const native_input            = compiler.native_input
+pub const native_flag_val         = compiler.native_flag_val
+pub const native_flag_has         = compiler.native_flag_has
+pub const native_flag_positional  = compiler.native_flag_positional
+pub const native_type_info        = compiler.native_type_info
+pub const native_range            = compiler.native_range
